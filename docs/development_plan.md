@@ -1,4 +1,4 @@
-# tunaDish 개발 계획
+~/.codex/instructions.md ~/AGENTS.md# tunaDish 개발 계획
 
 > 버전: v4
 > 작성일: 2026-03-20
@@ -9,15 +9,15 @@
 
 ## 1. 설계 전제 (tunapi 실제 구조 기반)
 
-| 항목 | tunapi 실제 동작 | tunadish 설계 반영 |
-|---|---|---|
-| 에이전트 실행 | 요청마다 CLI subprocess 생성/종료 (`JsonlSubprocessRunner`) | run 단위 실행/취소 모델 |
-| 메시지 파이프라인 | `handle_message()` → `Presenter.render_*()` → `Transport.send/edit()` | 클라이언트는 rendered markdown 수신 |
-| 세션 | `channel_id + engine → ResumeToken` (`ChatSessionStore`) | `conversation_id + engine` 매핑 |
-| 프로젝트 config | `tunapi.toml → ProjectsConfig → TransportRuntime` | tunapi.toml이 source of truth |
-| cwd 설정 | `set_run_base_dir(cwd)` → subprocess 실행 → `reset_run_base_dir(token)` | Telegram executor.py 패턴 준수 |
-| 스트리밍 | progress/action 이벤트 (5초 주기), 최종 답변은 `CompletedEvent` | 토큰 스트리밍 아님 |
-| ProgressTracker | `handle_message()` 내부 로컬 객체, 외부 구독 불가 | MVP에서 구조화 이벤트 포기 |
+| 항목              | tunapi 실제 동작                                                        | tunadish 설계 반영                  |
+| ----------------- | ----------------------------------------------------------------------- | ----------------------------------- |
+| 에이전트 실행     | 요청마다 CLI subprocess 생성/종료 (`JsonlSubprocessRunner`)             | run 단위 실행/취소 모델             |
+| 메시지 파이프라인 | `handle_message()` → `Presenter.render_*()` → `Transport.send/edit()`   | 클라이언트는 rendered markdown 수신 |
+| 세션              | `channel_id + engine → ResumeToken` (`ChatSessionStore`)                | `conversation_id + engine` 매핑     |
+| 프로젝트 config   | `tunapi.toml → ProjectsConfig → TransportRuntime`                       | tunapi.toml이 source of truth       |
+| cwd 설정          | `set_run_base_dir(cwd)` → subprocess 실행 → `reset_run_base_dir(token)` | Telegram executor.py 패턴 준수      |
+| 스트리밍          | progress/action 이벤트 (5초 주기), 최종 답변은 `CompletedEvent`         | 토큰 스트리밍 아님                  |
+| ProgressTracker   | `handle_message()` 내부 로컬 객체, 외부 구독 불가                       | MVP에서 구조화 이벤트 포기          |
 
 ---
 
@@ -130,11 +130,11 @@ async def _execute_run(self, conv_id: str, params):
 
 ### 3.4 용어 정리 (확정)
 
-| 용어 | 정의 |
-|---|---|
-| **프로젝트** | tunapi.toml의 프로젝트 (코드 디렉토리, `ProjectConfig`) |
-| **Conversation** | tunadish 대화 단위, UUID, tunapi `channel_id`에 매핑 |
-| **Run** | `handle_message()` 1회 실행 = subprocess 1개 |
+| 용어                | 정의                                                      |
+| ------------------- | --------------------------------------------------------- |
+| **프로젝트**        | tunapi.toml의 프로젝트 (코드 디렉토리, `ProjectConfig`)   |
+| **Conversation**    | tunadish 대화 단위, UUID, tunapi `channel_id`에 매핑      |
+| **Run**             | `handle_message()` 1회 실행 = subprocess 1개              |
 | **ambient_context** | Conversation → 프로젝트 연결 (`RunContext`), 매 요청 주입 |
 
 ---
@@ -143,12 +143,12 @@ async def _execute_run(self, conv_id: str, params):
 
 ### Sprint 0: 레포 구조 + 스캐폴딩
 
-| 작업 | 상세 |
-|---|---|
-| 모노레포 구조 | `client/`, `transport/`, `docs/` |
-| Tauri + React 스캐폴딩 | React + TS + shadcn/ui + Zustand |
-| Python 패키지 | `transport/src/tunadish_transport/` + `pyproject.toml` |
-| entry_point 등록 | `tunapi.transport_backends` → `tunadish` |
+| 작업                   | 상세                                                   |
+| ---------------------- | ------------------------------------------------------ |
+| 모노레포 구조          | `client/`, `transport/`, `docs/`                       |
+| Tauri + React 스캐폴딩 | React + TS + shadcn/ui + Zustand                       |
+| Python 패키지          | `transport/src/tunadish_transport/` + `pyproject.toml` |
+| entry_point 등록       | `tunapi.transport_backends` → `tunadish`               |
 
 **완료 기준**: `npm run dev`로 Tauri 윈도우, `pip install -e .`로 transport 인식
 
@@ -199,14 +199,14 @@ class TunadishBackend:
 
 #### JSON-RPC methods
 
-| method | 방향 | 설명 |
-|---|---|---|
-| `chat.send` | Client→Server | 메시지 전송 → run 시작 |
-| `run.cancel` | Client→Server | `run_map[conv_id]` → `RunningTask.cancel_requested` |
-| `message.new` | Server→Client | Transport.send() — 새 메시지 |
-| `message.update` | Server→Client | Transport.edit() — progress 갱신 |
-| `message.delete` | Server→Client | Transport.delete() |
-| `run.status` | Server→Client | idle / running / cancelling |
+| method           | 방향          | 설명                                                |
+| ---------------- | ------------- | --------------------------------------------------- |
+| `chat.send`      | Client→Server | 메시지 전송 → run 시작                              |
+| `run.cancel`     | Client→Server | `run_map[conv_id]` → `RunningTask.cancel_requested` |
+| `message.new`    | Server→Client | Transport.send() — 새 메시지                        |
+| `message.update` | Server→Client | Transport.edit() — progress 갱신                    |
+| `message.delete` | Server→Client | Transport.delete()                                  |
+| `run.status`     | Server→Client | idle / running / cancelling                         |
 
 #### Run 취소
 
@@ -264,12 +264,12 @@ class ConversationContextStore:
 
 ```typescript
 interface RunStore {
-  activeRuns: Record<string, 'idle' | 'running' | 'cancelling'>
-  cancelRun: (conversationId: string) => Promise<void>
+  activeRuns: Record<string, "idle" | "running" | "cancelling">;
+  cancelRun: (conversationId: string) => Promise<void>;
 }
 
 interface ChatStore {
-  messages: Record<string, RenderedMessage[]>
+  messages: Record<string, RenderedMessage[]>;
 }
 ```
 
@@ -354,25 +354,25 @@ spec.apply(runtime, config_path=config_path)
 
 ## 5. 기술적 리스크
 
-| 리스크 | 영향도 | 완화 |
-|---|---|---|
-| ambient_context 누락 → cwd/프로젝트 해석 실패 | 높음 | ConversationContextStore, 매 요청 주입 |
-| 동시 run으로 resume/cancel 꼬임 | 높음 | per-conversation mutex (anyio.Lock) |
-| Presenter 렌더링 한계 → 구조화 이벤트 불가 | 중간 | MVP rendered markdown only, Phase 2 core 확장 |
-| config 재빌드 비용 | 중간 | 변경 감지 시에만, MVP 읽기 전용 |
-| run cancel 타이밍 (progress_ref 선할당 전) | 낮음 | placeholder 선할당 후 run_map 등록 |
-| Tauri 모바일 | 중간 | 데스크탑 먼저 |
+| 리스크                                        | 영향도 | 완화                                          |
+| --------------------------------------------- | ------ | --------------------------------------------- |
+| ambient_context 누락 → cwd/프로젝트 해석 실패 | 높음   | ConversationContextStore, 매 요청 주입        |
+| 동시 run으로 resume/cancel 꼬임               | 높음   | per-conversation mutex (anyio.Lock)           |
+| Presenter 렌더링 한계 → 구조화 이벤트 불가    | 중간   | MVP rendered markdown only, Phase 2 core 확장 |
+| config 재빌드 비용                            | 중간   | 변경 감지 시에만, MVP 읽기 전용               |
+| run cancel 타이밍 (progress_ref 선할당 전)    | 낮음   | placeholder 선할당 후 run_map 등록            |
+| Tauri 모바일                                  | 중간   | 데스크탑 먼저                                 |
 
 ---
 
 ## 6. Phase 2+ 로드맵
 
-| 순서 | 기능 | 비고 |
-|---|---|---|
-| 1 | 구조화 이벤트 | `handle_message` wrapper 또는 core patch |
-| 2 | 페르소나 (prompt preset) + EngineOverrides | ChatPrefsStore 분리 |
-| 3 | Conversation별 엔진 고정 | ChatPrefsStore 확장 |
-| 4 | 프로젝트 CRUD UI | tunapi.toml 편집 + `build_runtime_spec → apply` |
-| 5 | 스킬 · 스니펫 | 입력창 안정화 후 |
-| 6 | 브랜치/서브대화 | worktree 연동 |
-| 7 | 토론 모드 | tunapi core 추출 후 |
+| 순서 | 기능                                       | 비고                                            |
+| ---- | ------------------------------------------ | ----------------------------------------------- |
+| 1    | 구조화 이벤트                              | `handle_message` wrapper 또는 core patch        |
+| 2    | 페르소나 (prompt preset) + EngineOverrides | ChatPrefsStore 분리                             |
+| 3    | Conversation별 엔진 고정                   | ChatPrefsStore 확장                             |
+| 4    | 프로젝트 CRUD UI                           | tunapi.toml 편집 + `build_runtime_spec → apply` |
+| 5    | 스킬 · 스니펫                              | 입력창 안정화 후                                |
+| 6    | 브랜치/서브대화                            | worktree 연동                                   |
+| 7    | 토론 모드                                  | tunapi core 추출 후                             |
