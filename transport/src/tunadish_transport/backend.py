@@ -4,9 +4,10 @@ import anyio
 import websockets
 from pathlib import Path
 from typing import Any
+from functools import partial
 
-from tunapi.core.messages import IncomingMessage, RenderedMessage, SendOptions, MessageRef
-from tunapi.runner_bridge import handle_message, RunningTask, ExecBridgeConfig
+from tunapi.transport import MessageRef, RenderedMessage, SendOptions
+from tunapi.runner_bridge import handle_message, RunningTask, ExecBridgeConfig, IncomingMessage
 from tunapi.transport_runtime import TransportRuntime
 from tunapi.api import set_run_base_dir, reset_run_base_dir
 
@@ -18,19 +19,26 @@ logger = logging.getLogger(__name__)
 
 class TunadishBackend:
     id = "tunadish"
+    description = "Tunadish WebSocket Transport"
 
     def __init__(self):
         self._conv_locks: dict[str, anyio.Lock] = {}
         self.run_map: dict[str, MessageRef] = {}
         self.running_tasks: dict[MessageRef, RunningTask] = {}
         
-        ctx_path = Path.home() / ".tunapi" / "tunadish_context.json"
-        self.context_store = ConversationContextStore(ctx_path)
+        # ctx_path = Path.home() / ".tunapi" / "tunadish_context.json" # This line is removed as context_store is initialized later
+        # self.context_store = ConversationContextStore(ctx_path) # This line is removed as context_store is initialized later
         self.presenter = TunadishPresenter()
 
-    def check_setup(self, engine_backend: Any, *, transport_override: dict | None = None) -> Any:
-        # Dummy setup check
-        pass
+    def check_setup(self, engine_backend: Any, *, transport_override: str | None = None) -> Any:
+        try:
+            from tunapi.transports import SetupResult
+            return SetupResult(issues=[], config_path=Path("."))
+        except ImportError:
+            class DummyResult:
+                issues = []
+                ok = True
+            return DummyResult()
 
     async def interactive_setup(self, *, force: bool = False) -> bool:
         return True
@@ -42,24 +50,24 @@ class TunadishBackend:
         self,
         *,
         transport_config: dict[str, Any],
-        config_path: Path,
+        config_path: Any,
         runtime: TransportRuntime,
-        **kwargs
+        final_notify: bool,
+        default_engine_override: str | None,
     ) -> None:
-        port = transport_config.get("port", 8765)
-        host = transport_config.get("host", "localhost")
+        ctx_path = Path.home() / ".tunapi" / "tunadish_context.json"
+        self.context_store = ConversationContextStore(ctx_path)
         
-        logger.info("Starting tunadish transport WebSocket server on ws://%s:%d", host, port)
+        async def main():
+            port = transport_config.get("port", 8765)
+            logger.info("Starting tunadish websocket server on ws://127.0.0.1:%s", port)
+            async with websockets.serve(partial(self._ws_handler, runtime, final_notify), "127.0.0.1", port):
+                await anyio.sleep_forever()
         
-        async def serve():
-            async with websockets.serve(lambda ws: self._ws_handler(ws, runtime), host, port):
-                await anyio.Event().wait()  # Run forever
+        anyio.run(main)
 
-        anyio.run(serve)
-
-    async def _ws_handler(self, websocket, runtime: TransportRuntime):
-        # WebSocket 연결마다 자체 Transport 인스턴스 생성 (단순화를 위해 연결 1개 가정)
-        # 실제로는 다중 연결을 관리할 수 있지만 MVP는 로컬 단일 클라이언트 가정
+    async def _ws_handler(self, runtime: TransportRuntime, final_notify: bool, websocket):
+        # WebSocket 연결마다 자체 Transport 인스턴스 생성
         transport = TunadishTransport(websocket)
         
         async for message in websocket:
@@ -80,7 +88,7 @@ class TunadishBackend:
                     conv_id = params.get("conversation_id")
                     project = params.get("project")
                     if conv_id and project:
-                        from tunapi.router import RunContext
+                        from tunapi.context import RunContext
                         await self.context_store.set_context(conv_id, RunContext(project=project))
                         await transport._send_notification("conversation.created", {"conversation_id": conv_id, "project": project})
                 else:
@@ -178,3 +186,5 @@ class TunadishBackend:
         if task is not None:
             task.cancel_requested.set()
             logger.info("Cancelled run for conversation %s", conv_id)
+
+BACKEND = TunadishBackend()

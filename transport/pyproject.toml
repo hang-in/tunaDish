@@ -16,4 +16,4 @@ dependencies = [
 ]
 
 [project.entry-points."tunapi.transport_backends"]
-tunadish = "tunadish_transport.backend:TunadishBackend"
+tunadish = "tunadish_transport.backend:BACKEND"

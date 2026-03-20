@@ -1,6 +1,10 @@
 from typing import Any
-from tunapi.transport import Transport
-from tunapi.core.messages import RenderedMessage, MessageRef, SendOptions
+from tunapi.transport import (
+    Transport,
+    MessageRef,
+    SendOptions,
+    RenderedMessage
+)
 from anyio.abc import ObjectSendStream
 from pydantic import BaseModel
 import json

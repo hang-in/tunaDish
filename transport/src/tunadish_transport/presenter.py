@@ -1,6 +1,6 @@
-from tunapi.presenter import Presenter
-from tunapi.core.messages import RenderedMessage
 from tunapi.progress import ProgressState
+from tunapi.runner_bridge import Presenter, RunOutcome
+from tunapi.transport import RenderedMessage
 
 class TunadishPresenter(Presenter):
     """
