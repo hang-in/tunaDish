@@ -72,6 +72,17 @@ class TunadishBackend:
                     anyio.start_soon(self.handle_chat_send, params, runtime, transport)
                 elif method == "run.cancel":
                     await self.handle_run_cancel(params, websocket)
+                elif method == "project.list":
+                    # Send projects list
+                    projects = list(runtime.project_aliases())
+                    await transport._send_notification("project.list.result", {"projects": projects})
+                elif method == "conversation.create":
+                    conv_id = params.get("conversation_id")
+                    project = params.get("project")
+                    if conv_id and project:
+                        from tunapi.router import RunContext
+                        await self.context_store.set_context(conv_id, RunContext(project=project))
+                        await transport._send_notification("conversation.created", {"conversation_id": conv_id, "project": project})
                 else:
                     logger.warning("Unknown JSON-RPC method: %s", method)
             except Exception as e:
