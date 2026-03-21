@@ -1,0 +1,206 @@
+import { useEffect, useRef } from 'react';
+import { useSystemStore } from '@/store/systemStore';
+import { useChatStore, type ChatMessage } from '@/store/chatStore';
+import { useContextStore } from '@/store/contextStore';
+import { wsClient } from '@/lib/wsClient';
+import { MessageView } from '@/components/chat/MessageView';
+import { InputArea } from '@/components/chat/InputArea';
+import {
+  X,
+  GitFork,
+} from '@phosphor-icons/react';
+
+const EMPTY_MESSAGES: ChatMessage[] = [];
+
+/** checkpointId에 해당하는 메시지와 직전 user 메시지를 부모 세션에서 찾아 반환 */
+function getCheckpointContext(convId: string | null, checkpointId: string | undefined): ChatMessage[] {
+  if (!convId || !checkpointId) return [];
+  const parentMsgs = useChatStore.getState().messages[convId];
+  if (!parentMsgs?.length) return [];
+
+  // checkpointId에 해당하는 메시지 찾기
+  const cpIdx = parentMsgs.findIndex(m => m.id === checkpointId);
+  if (cpIdx < 0) return [];
+
+  const cpMsg = parentMsgs[cpIdx];
+  const result: ChatMessage[] = [];
+
+  // checkpoint 메시지가 assistant면 직전 user 메시지도 포함
+  if (cpMsg.role === 'assistant') {
+    for (let i = cpIdx - 1; i >= 0; i--) {
+      if (parentMsgs[i].role === 'user') {
+        result.push({ ...parentMsgs[i], id: `ctx-${parentMsgs[i].id}` });
+        break;
+      }
+    }
+  }
+  // checkpoint 메시지가 user면 직후 assistant 메시지도 포함
+  result.push({ ...cpMsg, id: `ctx-${cpMsg.id}` });
+  if (cpMsg.role === 'user') {
+    for (let i = cpIdx + 1; i < parentMsgs.length; i++) {
+      if (parentMsgs[i].role === 'assistant') {
+        result.push({ ...parentMsgs[i], id: `ctx-${parentMsgs[i].id}` });
+        break;
+      }
+    }
+  }
+
+  return result;
+}
+
+export function BranchPanel() {
+  const branchId = useSystemStore(s => s.branchPanelBranchId);
+  const convId = useSystemStore(s => s.branchPanelConvId);
+  const label = useSystemStore(s => s.branchPanelLabel);
+  const projectKey = useSystemStore(s => s.branchPanelProjectKey);
+  const closeBranchPanel = useSystemStore(s => s.closeBranchPanel);
+
+  const branchChannel = branchId ? `branch:${branchId}` : null;
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // convBranches에서 checkpointId 조회
+  const checkpointId = useContextStore(s => {
+    for (const list of Object.values(s.convBranchesByProject)) {
+      const found = list.find(b => b.id === branchId);
+      if (found) return found.checkpointId;
+    }
+    return undefined;
+  });
+
+  const messagesRaw = useChatStore(s =>
+    branchChannel ? s.messages[branchChannel] : undefined,
+  );
+  const branchMessages = messagesRaw ?? EMPTY_MESSAGES;
+
+  // checkpoint 기반 부모 컨텍스트 (브랜치를 만든 메시지 쌍)
+  const parentContext = useRef<ChatMessage[]>([]);
+
+  // Bootstrap: create branch conversation + load history
+  useEffect(() => {
+    if (!branchChannel || !branchId || !convId || !projectKey) return;
+    const chat = useChatStore.getState();
+
+    // checkpoint 기반 부모 컨텍스트를 한번만 캡처 (패널 열 때)
+    parentContext.current = getCheckpointContext(convId, checkpointId);
+
+    if (!chat.conversations[branchChannel]) {
+      chat.addConversation({
+        id: branchChannel,
+        projectKey,
+        label: label || branchId,
+        type: 'branch',
+        parentId: convId,
+        engine: undefined,
+        createdAt: Date.now(),
+      });
+    }
+
+    chat.setActiveBranch(branchId, label || branchId);
+
+    // Request history only if no messages yet (avoid overwriting broadcast messages)
+    if (!chat.messages[branchChannel]?.length) {
+      wsClient.sendRpc('conversation.history', {
+        conversation_id: convId,
+        branch_id: branchId,
+      });
+    }
+
+    // 패널 닫힐 때 activeBranch 정리
+    return () => {
+      const current = useChatStore.getState();
+      if (current.activeBranchId === branchId) {
+        current.setActiveBranch(null);
+      }
+    };
+  }, [branchChannel, branchId, convId, projectKey, checkpointId]);
+
+  // 부모 컨텍스트 + 브랜치 메시지 합산
+  const messages = [...parentContext.current, ...branchMessages];
+
+  // Auto-scroll on new messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Listen for branch deletion
+  useEffect(() => {
+    const handler = (event: CustomEvent) => {
+      if (event.detail?.branch_id === branchId) {
+        closeBranchPanel();
+      }
+    };
+    window.addEventListener('branch-deleted', handler as EventListener);
+    return () => window.removeEventListener('branch-deleted', handler as EventListener);
+  }, [branchId, closeBranchPanel]);
+
+  // Grouping (same as ChatArea)
+  const isGrouped = (i: number): boolean => {
+    if (i === 0) return false;
+    const prev = messages[i - 1];
+    const cur = messages[i];
+    return prev.role === cur.role && cur.timestamp - prev.timestamp < 5 * 60 * 1000;
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-[#0e0e0e] border-l border-outline-variant/30">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-outline-variant/30 shrink-0">
+        <GitFork size={16} className="text-violet-400" weight="bold" />
+        <span className="font-medium text-[13px] text-violet-300 truncate flex-1">{label}</span>
+        <span className="text-[10px] text-on-surface-variant/30 font-mono">{branchId?.slice(0, 8)}</span>
+        <button
+          onClick={closeBranchPanel}
+          className="p-1 rounded text-on-surface-variant/50 hover:text-on-surface hover:bg-white/5 transition-colors"
+          title="Close"
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto pt-3 pb-40 space-y-0 scroll-smooth">
+        {messagesRaw === undefined ? (
+          <div className="flex items-center justify-center h-32 text-[11px] text-on-surface-variant/30">
+            Loading...
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex items-center justify-center h-32 text-[11px] text-on-surface-variant/30">
+            브랜치 대화를 시작하세요.
+          </div>
+        ) : (
+          <>
+            {/* Parent context messages (dimmed) */}
+            {parentContext.current.length > 0 && (
+              <div className="opacity-50">
+                {parentContext.current.map((msg, i) => {
+                  const prev = i > 0 ? parentContext.current[i - 1] : null;
+                  const roleSwitch = prev !== null && prev.role !== msg.role;
+                  return <MessageView key={msg.id} msg={msg} isGrouped={false} isRoleSwitch={roleSwitch} />;
+                })}
+                <div className="flex items-center gap-2 px-4 py-2 my-1">
+                  <div className="flex-1 border-t border-violet-400/20" />
+                  <span className="text-[10px] text-violet-400/40 font-mono shrink-0">branch start</span>
+                  <div className="flex-1 border-t border-violet-400/20" />
+                </div>
+              </div>
+            )}
+            {/* Branch messages */}
+            {branchMessages.map((msg, i) => {
+              const offset = parentContext.current.length;
+              const globalIdx = offset + i;
+              const prev = globalIdx > 0 ? messages[globalIdx - 1] : null;
+              const roleSwitch = prev !== null && prev.role !== msg.role;
+              return <MessageView key={msg.id} msg={msg} isGrouped={isGrouped(globalIdx)} isRoleSwitch={roleSwitch} />;
+            })}
+          </>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input — scoped to branch channel */}
+      <div className="shrink-0">
+        <InputArea overrideConversationId={branchChannel ?? undefined} />
+      </div>
+    </div>
+  );
+}

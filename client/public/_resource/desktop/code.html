@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>tunadish / main</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0e0e0e;
+            color: #e5e2e1;
+            -webkit-font-smoothing: antialiased;
+        }
+        .material-symbols-outlined {
+            font-size: 14px;
+            vertical-align: middle;
+        }
+        .mono-text {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        /* Custom scrollbar for high-density UI */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #2a2a2a;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #353534;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface": "#131313",
+                        "surface-container-lowest": "#0e0e0e",
+                        "surface-container-low": "#1c1b1b",
+                        "surface-container-high": "#2a2a2a",
+                        "on-surface": "#e5e2e1",
+                        "on-surface-variant": "#c6c5d5",
+                        "primary": "#bdc2ff",
+                        "primary-container": "#5e6ad2",
+                        "on-primary-container": "#fdfaff",
+                        "outline-variant": "#222222",
+                    },
+                    fontFamily: {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+</head>
+<body class="h-screen overflow-hidden flex flex-col">
+<!-- Top Navigation Bar (Shared Component) -->
+<header class="w-full h-12 border-b border-outline-variant sticky top-0 z-50 bg-[#0e0e0e]/80 backdrop-blur-xl flex justify-between items-center px-4">
+<div class="flex items-center gap-3">
+<span class="font-['JetBrains_Mono'] text-[#c6c5d5] uppercase tracking-widest text-[11px]">tunadish / main</span>
+<div class="h-4 w-[1px] bg-outline-variant mx-1"></div>
+<div class="flex items-center gap-4">
+<a class="text-[#c6c5d5] hover:text-[#e5e2e1] font-['Inter'] text-[13px] font-medium" href="#">Research</a>
+<a class="text-[#e5e2e1] border-b border-[#5e6ad2] font-['Inter'] text-[13px] font-medium" href="#">Schema</a>
+<a class="text-[#c6c5d5] hover:text-[#e5e2e1] font-['Inter'] text-[13px] font-medium" href="#">Preview</a>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<div class="flex items-center bg-surface-container-low px-2 py-1 rounded border border-outline-variant/10">
+<span class="material-symbols-outlined text-on-surface-variant mr-2">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-[13px] w-48 placeholder-on-surface-variant" placeholder="Search..." type="text"/>
+</div>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-on-surface">history</button>
+<button class="material-symbols-outlined text-on-surface-variant hover:text-on-surface">notifications</button>
+<button class="bg-surface-container-high text-on-surface px-3 py-1 text-[13px] rounded hover:bg-surface-bright transition-colors">Share</button>
+<button class="bg-primary-container text-on-primary-container px-3 py-1 text-[13px] font-medium rounded hover:opacity-90 transition-opacity">Deploy</button>
+<img alt="User Profile" class="w-6 h-6 rounded-full ml-1" data-alt="Small circular user profile avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDO3UJVGhIs9hdh9obE1nGYI7bPhH3iBZiHUEUu6IH2jm6cvxYplUt6QRCkEbyhuiv4fiDdj_SKeWfouSyfWqz2Raxv__3PFFQ0Ch_WZ2dpGOaPFL8_bRYjiIe-24kLKzzuChYKUgwk_m5cpa4N0Cz7o38T48oveSv7ysfbd_pPcOk2ko91OIzyxA8PIn-6BRGZSdZ9DxTe9kUFMxEqcDAw9qKcLAhFsMdHpafviG5mObPo4FVLLx5rIJ0edpqtwLpnYi0vdKULgBI"/>
+</div>
+</header>
+<div class="flex-grow flex overflow-hidden">
+<!-- Left Sidebar (Shared Component Style) -->
+<aside class="h-screen w-64 flex flex-col border-r border-outline-variant bg-[#131313] font-['Inter'] text-[13px] tracking-tight leading-none py-4 px-3">
+<!-- Workspace Switcher -->
+<div class="flex items-center justify-between mb-6 px-1">
+<div class="flex items-center gap-2">
+<div class="w-5 h-5 bg-primary-container rounded flex items-center justify-center text-[10px] font-bold">T</div>
+<span class="font-semibold text-[#e5e2e1] text-sm">tunadish</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">unfold_more</span>
+</div>
+<!-- New Session CTA -->
+<button class="flex items-center gap-2 w-full px-2 py-1.5 mb-6 text-on-surface-variant hover:bg-white/5 rounded transition-all active:scale-[0.98]">
+<span class="material-symbols-outlined">add</span>
+<span>New Session</span>
+</button>
+<!-- Navigation Sections -->
+<div class="flex-grow space-y-6 overflow-y-auto">
+<section>
+<h3 class="px-2 mb-2 text-[11px] font-medium text-on-surface-variant/50 uppercase tracking-wider">Sessions</h3>
+<nav class="space-y-0.5">
+<a class="flex items-center gap-2 px-2 py-1.5 text-[#bdc2ff] font-medium border-l-2 border-[#5e6ad2] bg-white/5 transition-colors" href="#">
+<span class="material-symbols-outlined">terminal</span>
+<span>Initial Research</span>
+</a>
+<a class="flex items-center gap-2 px-2 py-1.5 text-[#c6c5d5] hover:text-[#e5e2e1] hover:bg-white/5 rounded transition-colors" href="#">
+<span class="material-symbols-outlined">database</span>
+<span>Database Schema</span>
+</a>
+</nav>
+</section>
+<section>
+<h3 class="px-2 mb-2 text-[11px] font-medium text-on-surface-variant/50 uppercase tracking-wider">Project Tree</h3>
+<nav class="space-y-0.5">
+<div class="flex items-center gap-2 px-2 py-1 text-[#c6c5d5] hover:text-[#e5e2e1] cursor-pointer group">
+<span class="material-symbols-outlined text-[12px]">keyboard_arrow_down</span>
+<span class="material-symbols-outlined">folder</span>
+<span>src/components</span>
+</div>
+<div class="pl-6 py-1 flex items-center gap-2 text-[#c6c5d5] hover:text-[#e5e2e1] cursor-pointer">
+<span class="material-symbols-outlined">description</span>
+<span>App.tsx</span>
+</div>
+<a class="flex items-center gap-2 px-2 py-1.5 text-[#c6c5d5] hover:text-[#e5e2e1] hover:bg-white/5 rounded" href="#">
+<span class="material-symbols-outlined">account_tree</span>
+<span>Main Branch</span>
+</a>
+<a class="flex items-center gap-2 px-2 py-1.5 text-[#c6c5d5] hover:text-[#e5e2e1] hover:bg-white/5 rounded" href="#">
+<span class="material-symbols-outlined">history</span>
+<span>History</span>
+</a>
+</nav>
+</section>
+</div>
+<!-- Sidebar Footer -->
+<div class="mt-auto border-t border-outline-variant pt-4 space-y-1">
+<a class="flex items-center gap-2 px-2 py-1.5 text-[#c6c5d5] hover:text-[#e5e2e1] hover:bg-white/5 rounded" href="#">
+<span class="material-symbols-outlined">description</span>
+<span>Documentation</span>
+</a>
+<a class="flex items-center gap-2 px-2 py-1.5 text-[#c6c5d5] hover:text-[#e5e2e1] hover:bg-white/5 rounded" href="#">
+<span class="material-symbols-outlined">chat_bubble</span>
+<span>Feedback</span>
+</a>
+</div>
+</aside>
+<!-- Center Panel: Chat Area -->
+<main class="flex-grow flex flex-col bg-surface-container-lowest">
+<!-- Workspace Breadcrumb Bar -->
+<div class="h-10 border-b border-outline-variant/30 flex items-center justify-between px-4">
+<div class="flex items-center gap-2 text-[12px]">
+<span class="text-on-surface-variant">tunadish</span>
+<span class="text-on-surface-variant/40">/</span>
+<span class="text-on-surface">main</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined animate-spin text-primary text-[14px]">progress_activity</span>
+<span class="text-[12px] text-on-surface-variant">Working...</span>
+</div>
+<div class="h-4 w-[1px] bg-outline-variant"></div>
+<div class="flex items-center gap-2">
+<button class="text-[12px] text-on-surface-variant hover:text-error transition-colors">Abandon</button>
+<button class="text-[12px] text-primary hover:text-white font-medium">Merge</button>
+</div>
+</div>
+</div>
+<!-- Chat Content -->
+<div class="flex-grow overflow-y-auto p-8 space-y-10">
+<!-- User Message -->
+<div class="max-w-3xl mx-auto flex gap-4">
+<div class="w-7 h-7 bg-surface-container-high rounded flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[16px]">person</span>
+</div>
+<div class="space-y-1">
+<div class="flex items-center gap-2">
+<span class="text-[13px] font-semibold text-on-surface">You</span>
+<span class="text-[11px] text-on-surface-variant/50">14:22</span>
+</div>
+<p class="text-[14px] leading-relaxed text-on-surface/90">
+                            Can you help me optimize the data fetching logic? I noticed some redundant re-renders when switching between session tabs.
+                        </p>
+</div>
+</div>
+<!-- Agent Message -->
+<div class="max-w-3xl mx-auto flex gap-4">
+<div class="w-7 h-7 bg-primary-container/20 border border-primary/20 rounded flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-primary text-[16px]" style="font-variation-settings: 'FILL' 1;">smart_toy</span>
+</div>
+<div class="space-y-4 w-full">
+<div class="flex items-center gap-2">
+<span class="text-[13px] font-semibold text-on-surface">Agent</span>
+<span class="text-[11px] text-on-surface-variant/50">14:23</span>
+</div>
+<div class="space-y-4">
+<p class="text-[14px] leading-relaxed text-on-surface/90">
+                                Certainly. To optimize the data fetching and prevent redundant re-renders, we should implement a memoized state pattern using <code class="mono-text bg-surface-container px-1 rounded text-primary">useMemo</code> and wrap the fetch call in a stable context.
+                            </p>
+<!-- Code Block -->
+<div class="rounded-lg bg-[#010101] border border-outline-variant/40 overflow-hidden">
+<div class="flex items-center justify-between px-4 py-2 bg-white/5 border-b border-outline-variant/20">
+<span class="text-[11px] font-medium text-on-surface-variant mono-text uppercase tracking-widest">fetch-logic.ts</span>
+<button class="material-symbols-outlined text-[14px] text-on-surface-variant hover:text-on-surface">content_copy</button>
+</div>
+<div class="p-4 mono-text text-[13px] text-on-surface/80 overflow-x-auto whitespace-pre">
+<span class="text-primary">const</span> <span class="text-tertiary">fetchSessionData</span> = <span class="text-primary">useCallback</span>((sessionId: <span class="text-secondary">string</span>) =&gt; {
+  <span class="text-on-surface-variant/50">// Implementation here...</span>
+<span class="text-primary">return</span> api.get(<span class="text-tertiary">`/sessions/${sessionId}`</span>);
+}, [api]);
+
+<span class="text-primary">export const</span> <span class="text-tertiary">SessionProvider</span> = ({ children }) =&gt; {
+  <span class="text-primary">const</span> [data, setData] = <span class="text-primary">useState</span>(<span class="text-primary">null</span>);
+  <span class="text-on-surface-variant/50">// ...</span>
+};</div>
+</div>
+<p class="text-[14px] leading-relaxed text-on-surface/90">
+                                This ensures that the fetching function identity remains stable across renders unless the API client itself changes.
+                            </p>
+</div>
+</div>
+</div>
+</div>
+<!-- Input Area -->
+<div class="p-4 bg-surface-container-lowest border-t border-outline-variant/30">
+<div class="max-w-3xl mx-auto relative bg-surface-container rounded-xl border border-outline-variant/60 focus-within:border-primary/50 transition-colors shadow-2xl">
+<textarea class="w-full bg-transparent border-none focus:ring-0 text-[14px] p-4 pb-12 resize-none placeholder-on-surface-variant/40 min-h-[100px]" placeholder="Ask anything..."></textarea>
+<div class="absolute bottom-3 left-3 flex items-center gap-1">
+<button class="p-1.5 hover:bg-white/5 rounded-md text-on-surface-variant transition-colors">
+<span class="material-symbols-outlined">attach_file</span>
+</button>
+<button class="p-1.5 hover:bg-white/5 rounded-md text-on-surface-variant transition-colors">
+<span class="material-symbols-outlined">terminal</span>
+</button>
+</div>
+<div class="absolute bottom-3 right-3 flex items-center gap-2">
+<button class="p-1.5 hover:bg-white/5 rounded-md text-on-surface-variant transition-colors">
+<span class="material-symbols-outlined">stop_circle</span>
+</button>
+<button class="bg-primary text-on-secondary px-3 py-1.5 rounded-lg flex items-center gap-2 text-[12px] font-semibold hover:bg-white transition-colors">
+<span>Send</span>
+<span class="material-symbols-outlined text-[14px]">send</span>
+</button>
+</div>
+</div>
+<div class="text-center mt-3">
+<span class="text-[10px] text-on-surface-variant/40">Shift + Enter to add a new line. Agent might hallucinate logic.</span>
+</div>
+</div>
+</main>
+<!-- Right Sidebar: Context Area -->
+<aside class="w-[280px] bg-surface border-l border-outline-variant overflow-y-auto font-['Inter']">
+<div class="p-4 border-b border-outline-variant/40">
+<h2 class="text-[11px] font-bold text-on-surface uppercase tracking-widest">Context Area</h2>
+</div>
+<div class="p-4 space-y-8">
+<!-- Project Info -->
+<section>
+<h3 class="text-[10px] font-semibold text-on-surface-variant/40 uppercase tracking-[0.1em] mb-3">Project</h3>
+<div class="space-y-2">
+<div class="flex justify-between items-center group">
+<span class="text-[12px] text-on-surface-variant">Name</span>
+<span class="text-[12px] text-on-surface font-medium">tunadish</span>
+</div>
+<div class="flex justify-between items-center group">
+<span class="text-[12px] text-on-surface-variant">CWD</span>
+<span class="text-[12px] text-on-surface font-medium truncate ml-4 opacity-70 mono-text">/home/d9ng/privat...</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-[12px] text-on-surface-variant">Engine</span>
+<div class="flex items-center gap-1.5">
+<div class="w-1.5 h-1.5 bg-primary rounded-full"></div>
+<span class="text-[12px] text-on-surface font-medium">claude-3.5-sonnet</span>
+</div>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-[12px] text-on-surface-variant">Sessions</span>
+<span class="text-[12px] text-on-surface font-medium">3</span>
+</div>
+</div>
+</section>
+<!-- Session Info -->
+<section>
+<h3 class="text-[10px] font-semibold text-on-surface-variant/40 uppercase tracking-[0.1em] mb-3">Session</h3>
+<div class="space-y-2">
+<div class="flex justify-between items-center">
+<span class="text-[12px] text-on-surface-variant">Type</span>
+<span class="text-[12px] bg-surface-container-high px-1.5 py-0.5 rounded text-on-surface font-medium">main</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-[12px] text-on-surface-variant">Active Label</span>
+<span class="text-[12px] text-on-surface font-medium">Initial Research</span>
+</div>
+</div>
+</section>
+<!-- Status Panel -->
+<section>
+<h3 class="text-[10px] font-semibold text-on-surface-variant/40 uppercase tracking-[0.1em] mb-3">Status</h3>
+<div class="flex flex-wrap gap-2">
+<span class="text-[11px] px-2 py-1 bg-white/5 border border-outline-variant/30 rounded text-on-surface">Idle</span>
+<span class="text-[11px] px-2 py-1 bg-primary/10 border border-primary/20 rounded text-primary">Preview Active</span>
+</div>
+</section>
+<!-- Persona -->
+<section>
+<h3 class="text-[10px] font-semibold text-on-surface-variant/40 uppercase tracking-[0.1em] mb-3">Persona</h3>
+<div class="p-3 bg-surface-container-low border border-outline-variant/20 rounded flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container-high flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">psychology</span>
+</div>
+<div>
+<div class="text-[12px] font-medium text-on-surface">Default Assistant</div>
+<div class="text-[10px] text-on-surface-variant">High-precision coding mode</div>
+</div>
+</div>
+</section>
+<!-- Skills -->
+<section>
+<h3 class="text-[10px] font-semibold text-on-surface-variant/40 uppercase tracking-[0.1em] mb-3">Skills</h3>
+<div class="flex flex-col gap-1.5">
+<div class="flex items-center gap-2 text-[11px] text-on-surface-variant/50 italic">
+<span class="material-symbols-outlined text-[14px]">info</span>
+                            No special tools enabled
+                        </div>
+</div>
+</section>
+</div>
+<!-- Context Footer -->
+<div class="mt-8 p-4 border-t border-outline-variant/20">
+<button class="w-full py-2 bg-surface-container-high hover:bg-surface-bright text-[11px] font-semibold rounded transition-colors text-on-surface-variant uppercase tracking-widest">
+                    Manage Context
+                </button>
+</div>
+</aside>
+</div>
+</body></html>
