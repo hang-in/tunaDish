@@ -1,7 +1,8 @@
 ~/.codex/instructions.md ~/AGENTS.md# tunaDish 개발 계획
 
-> 버전: v4
+> 버전: v5
 > 작성일: 2026-03-20
+> 갱신일: 2026-03-20
 > 기반 문서: `docs/briefing.md`, `docs/prd.md`
 > 리뷰: Codex 3회 반복 리뷰 반영 (tunapi 소스 기반 검증)
 
@@ -362,10 +363,209 @@ spec.apply(runtime, config_path=config_path)
 | config 재빌드 비용                            | 중간   | 변경 감지 시에만, MVP 읽기 전용               |
 | run cancel 타이밍 (progress_ref 선할당 전)    | 낮음   | placeholder 선할당 후 run_map 등록            |
 | Tauri 모바일                                  | 중간   | 데스크탑 먼저                                 |
+| JSON-RPC 2.0 스펙 미준수                      | 높음   | Sprint 7에서 해결                             |
+| 실행 타임아웃 부재 → 대화 영구 차단           | 높음   | Sprint 7에서 해결                             |
+| WS 멀티클라이언트 미지원                      | 중간   | Sprint 7에서 해결                             |
 
 ---
 
-## 6. Phase 2+ 로드맵
+## 6. Sprint 7: 안정화 & 기술 부채 해소
+
+> Phase 1 MVP 완성 이후, Phase 2 진입 전 필수 선행 작업.
+> e2e 검증 + 프로토콜 정합성 + 안정성 확보가 목적.
+
+### 6.1 e2e 검증 파이프라인 구축 (우선순위: 최상)
+
+**문제**: Sprint 1부터 tunapi CLI 로딩 이슈로 전체 흐름(클라이언트→WS→tunapi→CLI→응답) 테스트가 막혀 있음. MVP "완료"이나 실제 동작 미검증.
+
+**해결**:
+1. tunapi CLI 로딩 이슈 디버깅 및 해결 (근본 원인 추적)
+2. 수동 e2e 테스트 체크리스트 작성 (project.list → conversation.create → chat.send → 응답 수신 → run.cancel)
+3. 최소 integration test: transport 단독 기동 → mock WS 클라이언트 → JSON-RPC round-trip 검증
+
+**완료 기준**: `tunapi run --transport tunadish` → 클라이언트에서 메시지 송수신 성공
+
+---
+
+### 6.2 JSON-RPC 2.0 프로토콜 정합성 (우선순위: 높음)
+
+**문제**: 현재 request에 대한 response가 JSON-RPC 2.0 스펙을 따르지 않음 — `id` 미반환, error object 미구현.
+
+**해결**:
+
+```python
+# Request → Response (현재)
+# client: {"jsonrpc":"2.0","id":1,"method":"project.list","params":{}}
+# server: {"method":"project.list.result","params":{...}}  ← notification 형태로 반환 (잘못됨)
+
+# Request → Response (수정 후)
+# server: {"jsonrpc":"2.0","id":1,"result":[...]}  ← 표준 response
+
+# Error
+# server: {"jsonrpc":"2.0","id":1,"error":{"code":-32001,"message":"run already in progress"}}
+```
+
+작업 항목:
+1. **backend.py `_ws_handler`**: request `id` 파싱 → response에 동일 `id` 포함
+2. **에러 객체 표준화**: code/message/data 구조, 커스텀 에러 코드 정의
+3. **notification vs response 분리**: server→client push는 `id` 없는 notification 유지, request 응답은 `id` 포함 response로 변경
+4. **클라이언트 `wsClient.ts`**: pending request map (`id → Promise`) 구현, response/notification 분기 처리
+
+커스텀 에러 코드:
+
+| 코드 | 의미 |
+|------|------|
+| -32600 | Invalid Request (JSON-RPC 표준) |
+| -32601 | Method not found (JSON-RPC 표준) |
+| -32001 | Run already in progress |
+| -32002 | No active run (cancel 실패) |
+| -32003 | Conversation not found |
+| -32004 | Run timeout |
+
+**완료 기준**: 모든 request가 표준 `{jsonrpc, id, result/error}` response 반환
+
+---
+
+### 6.3 실행 타임아웃 (우선순위: 높음)
+
+**문제**: `_execute_run`에 타임아웃이 없어 CLI hang 시 대화가 영구 차단됨. mutex도 영원히 잠김.
+
+**해결**:
+
+```python
+async def _execute_run(self, conv_id: str, params):
+    timeout = params.get("timeout", 300)  # 기본 5분
+    try:
+        with anyio.fail_after(timeout):
+            await runner_bridge.handle_message(...)
+    except TimeoutError:
+        # 1. subprocess kill
+        # 2. 클라이언트에 timeout error notification
+        await self.transport.edit(
+            ref=progress_ref,
+            message=RenderedMessage(text="⏱️ 실행 시간 초과 ({}s)".format(timeout)),
+        )
+    finally:
+        self.run_map.pop(conv_id, None)
+        # mutex 자동 해제 (async with)
+```
+
+- 기본 타임아웃: 300초 (5분), `chat.send` params로 override 가능
+- 타임아웃 시 `run.status` notification으로 `idle` 복귀 알림
+
+**완료 기준**: 5분 초과 run → 자동 종료 + 클라이언트 에러 표시 + mutex 해제
+
+---
+
+### 6.4 WS 연결 관리 & 멀티클라이언트 (우선순위: 중간)
+
+**문제**: 활성 WS 연결 추적 없음. 클라이언트 disconnect 시 orphan run 잔류. 다중 클라이언트 접속 시 notification 누락.
+
+**해결**:
+
+```python
+class TunadishBackend:
+    _connections: set[websockets.WebSocketServerProtocol] = set()
+
+    async def _ws_handler(self, ws):
+        self._connections.add(ws)
+        try:
+            # ... 기존 로직
+        finally:
+            self._connections.discard(ws)
+            # orphan run 정리: 이 연결이 시작한 run의 cancel 처리
+
+    async def _broadcast(self, notification: dict):
+        """모든 활성 클라이언트에 notification 전송"""
+        for ws in list(self._connections):
+            try:
+                await ws.send(json.dumps(notification))
+            except websockets.ConnectionClosed:
+                self._connections.discard(ws)
+```
+
+작업 항목:
+1. `_connections` set으로 활성 연결 추적
+2. disconnect 시 해당 연결의 orphan run cancel 처리
+3. `Transport.send/edit/delete`를 broadcast 방식으로 변경 (모든 연결에 전달)
+4. 연결별 subscription 모델은 Phase 2로 유보 (MVP: 전체 broadcast)
+
+**완료 기준**: 2개 클라이언트 동시 접속 → 양쪽 모두 메시지 수신, 한쪽 disconnect → orphan run 정리
+
+---
+
+### 6.5 메시지 순서 보장 (우선순위: 중간)
+
+**문제**: 메시지가 `Record<message_id, Message>`로 저장되어 순서 메타데이터 없음. 렌더링 순서가 보장되지 않음.
+
+**해결**:
+
+```typescript
+// 현재: Record<string, RenderedMessage>
+// 변경: 배열 + timestamp
+interface ChatMessage {
+  id: string;
+  conversationId: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: number;  // Date.now()
+  status?: "sending" | "streaming" | "done" | "error";
+}
+
+interface ChatStore {
+  messages: Record<string, ChatMessage[]>;  // conversationId → ordered array
+}
+```
+
+- `message.new` 수신 시 배열 끝에 push (서버 발행 순서 = 도착 순서)
+- `message.update`는 `id`로 기존 항목 in-place 교체
+- timestamp는 표시용 (정렬 기준은 배열 index)
+
+**완료 기준**: 메시지가 항상 발행 순서대로 표시
+
+---
+
+### 6.6 WS URL 설정 가능화 (우선순위: 낮음)
+
+**문제**: 클라이언트 `ws://127.0.0.1:8765` 하드코딩, transport도 port 8765 기본.
+
+**해결**:
+- **Transport**: `transport_config`에서 `host`/`port` 읽기 (이미 port는 부분 구현)
+- **클라이언트**: 설정 화면 or 환경변수 `TUNADISH_WS_URL`로 override
+- **Tauri**: `src-tauri/tauri.conf.json`에 기본값, 런타임 설정으로 변경 가능
+
+**완료 기준**: 다른 포트/호스트로 기동 가능
+
+---
+
+### 6.7 코드 정리 (우선순위: 낮음)
+
+| 항목 | 위치 | 수정 |
+|------|------|------|
+| `import json` 중복 | `context_store.py` L1-2 | 중복 제거 |
+| ContextPanel 미구현 | `client/src/` | placeholder → 최소 정보 표시 (프로젝트명, 연결 상태) |
+| CLAUDE.md "현재 단계" 오래됨 | `CLAUDE.md` | "MVP Phase 1 완료, Sprint 7 진행 중"으로 갱신 |
+
+---
+
+### Sprint 7 실행 순서
+
+```
+6.1 e2e 검증 ──────────────── 블로커, 최우선
+ ↓
+6.2 JSON-RPC 정합성 ────────── e2e 통과 후 프로토콜 수정
+6.3 실행 타임아웃 ──────────── 6.2와 병렬 가능
+ ↓
+6.4 WS 멀티클라이언트 ──────── 프로토콜 안정 후
+6.5 메시지 순서 보장 ────────── 6.4와 병렬 가능
+ ↓
+6.6 WS URL 설정 ────────────── 독립 작업
+6.7 코드 정리 ──────────────── 마지막
+```
+
+---
+
+## 7. Phase 2+ 로드맵
 
 | 순서 | 기능                                       | 비고                                            |
 | ---- | ------------------------------------------ | ----------------------------------------------- |

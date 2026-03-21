@@ -37,11 +37,9 @@ tunadish/
 
 ## 현재 단계
 
-레포 초기 세팅 전. `docs/briefing.md` 9절의 요청사항 순서대로 진행:
-1. 레포 구조 검토
-2. 클라이언트 스캐폴딩 (Tauri + React + shadcn/ui + Zustand)
-3. Python transport 패키지 구조
-4. 구현 플랜 (MVP Phase 1)
+MVP Phase 1 완료 (Sprint 0~6). Sprint 7 (안정화 & 기술 부채 해소) 진입 예정.
+- `docs/development_plan.md` 6절: Sprint 7 상세 플랜
+- 최우선 블로커: e2e 검증 파이프라인 구축 (tunapi CLI 로딩 이슈)
 
 ## tunapi 참조
 

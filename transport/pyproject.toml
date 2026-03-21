@@ -15,5 +15,16 @@ dependencies = [
     "tunapi", # 로컬에서 가져오거나 설치된 패키지 참조
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-mock>=3.12",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
 [project.entry-points."tunapi.transport_backends"]
 tunadish = "tunadish_transport.backend:BACKEND"
