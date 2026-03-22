@@ -3,6 +3,7 @@ import { useRunStore, type RunStatus } from '@/store/runStore';
 import { useSystemStore } from '@/store/systemStore';
 import { useContextStore, type MemoryEntry, type GitBranch, type ConversationBranch, type ReviewEntry, type ProjectContext, type DiscussionEntry, type CodeSearchResponse, type CodeMapResponse } from '@/store/contextStore';
 import { contextLoadedConvs } from '@/lib/contextCache';
+import * as dbSync from '@/lib/dbSync';
 
 type RequestParams = Record<string, unknown>;
 
@@ -229,27 +230,37 @@ class WebSocketClient {
       case 'message.new': {
         const ref = params.ref as { channel_id: string; message_id: string };
         console.log('[message.new]', { channel_id: ref.channel_id, message_id: ref.message_id, text: (params.message as { text: string }).text?.slice(0, 80) });
-        chat.addMessage(ref, params.message as { text: string }, {
+        const msgMeta = {
           engine: params.engine as string | undefined,
           model: params.model as string | undefined,
           persona: params.persona as string | undefined,
+        };
+        chat.addMessage(ref, params.message as { text: string }, msgMeta);
+        dbSync.syncMessage({
+          id: ref.message_id, conversationId: ref.channel_id, role: 'assistant',
+          content: (params.message as { text: string }).text, timestamp: Date.now(),
+          status: 'streaming', ...msgMeta,
         });
         // active run이 없는 채널의 메시지는 즉시 done 처리 (브랜치 context summary 등)
         const channelRun = run.activeRuns[ref.channel_id];
         if (!channelRun || channelRun === 'idle') {
           chat.finalizeStreamingMessages(ref.channel_id);
+          dbSync.syncFinalizeMessages(ref.channel_id);
         }
         break;
       }
-      case 'message.update':
-        chat.updateMessage(
-          params.ref as { channel_id: string; message_id: string },
-          params.message as { text: string },
-        );
+      case 'message.update': {
+        const updRef = params.ref as { channel_id: string; message_id: string };
+        chat.updateMessage(updRef, params.message as { text: string });
+        dbSync.syncMessageUpdate(updRef.channel_id, updRef.message_id, (params.message as { text: string }).text);
         break;
-      case 'message.delete':
-        chat.deleteMessage(params.ref as { channel_id: string; message_id: string });
+      }
+      case 'message.delete': {
+        const delRef = params.ref as { channel_id: string; message_id: string };
+        chat.deleteMessage(delRef);
+        dbSync.syncMessageDelete(delRef.channel_id, delRef.message_id);
         break;
+      }
       case 'run.status': {
         const convId = params.conversation_id as string;
         const branchId = params.branch_id as string | undefined;
@@ -261,30 +272,39 @@ class WebSocketClient {
         // 실행 완료 시 streaming 메시지를 finalize
         if (status === 'idle') {
           chat.finalizeStreamingMessages(convId);
-          if (branchId) chat.finalizeStreamingMessages(channelId);
+          dbSync.syncFinalizeMessages(convId);
+          if (branchId) {
+            chat.finalizeStreamingMessages(channelId);
+            dbSync.syncFinalizeMessages(channelId);
+          }
         }
         break;
       }
-      case 'project.list.result':
-        chat.setProjectsFromResult(
-          params.configured as Array<{ key: string; alias: string; path?: string | null; default_engine?: string | null; type?: string | null }>,
-          params.discovered as string[],
-        );
+      case 'project.list.result': {
+        const configured = params.configured as Array<{ key: string; alias: string; path?: string | null; default_engine?: string | null; type?: string | null }>;
+        const discovered = params.discovered as string[];
+        chat.setProjectsFromResult(configured, discovered);
+        dbSync.syncProjects([
+          ...configured.map(p => ({ key: p.key, name: p.alias, path: p.path, default_engine: p.default_engine, source: 'configured' as const, type: p.type ?? 'project' })),
+          ...discovered.map(k => ({ key: k, name: k, source: 'discovered' as const, type: 'project' })),
+        ]);
         break;
+      }
       case 'conversation.created':
       case 'conversation.create.result':
-        chat.addConversation({
-          id: params.conversation_id as string,
-          projectKey: params.project as string,
-          label: params.label as string ?? 'session',
-          type: 'main',
-          engine: undefined,
-          createdAt: Date.now(),
-        });
+        {
+          const newConvId = params.conversation_id as string;
+          const newProjectKey = params.project as string;
+          const newLabel = (params.label as string) ?? 'session';
+          const now = Date.now();
+          chat.addConversation({ id: newConvId, projectKey: newProjectKey, label: newLabel, type: 'main', engine: undefined, createdAt: now });
+          dbSync.syncConversation({ id: newConvId, projectKey: newProjectKey, label: newLabel, type: 'main', createdAt: now });
+        }
         break;
       case 'conversation.deleted':
       case 'conversation.delete.result':
         chat.removeConversation(params.conversation_id as string);
+        dbSync.syncDeleteConversation(params.conversation_id as string);
         break;
       case 'conversation.history.result': {
         const convId = params.conversation_id as string;
@@ -316,6 +336,10 @@ class WebSocketClient {
           created_at: c.created_at,
           source: c.source,
         })));
+        dbSync.syncConversations(convs.map(c => ({
+          id: c.id, projectKey: c.project, label: c.label,
+          created_at: c.created_at, source: c.source,
+        })));
         break;
       }
       case 'command.result': {
@@ -333,12 +357,14 @@ class WebSocketClient {
           const settings = (params as Record<string, unknown>).settings as
             { engine?: string; model?: string; persona?: string; trigger_mode?: string } | undefined;
           if (settings) {
-            chat.updateConvSettings(convId, {
+            const convSettings = {
               engine: settings.engine,
               model: settings.model,
               persona: settings.persona,
               triggerMode: settings.trigger_mode,
-            });
+            };
+            chat.updateConvSettings(convId, convSettings);
+            dbSync.syncConvSettings(convId, convSettings);
           }
           // command(model.set, trigger.set 등)로 context가 바뀔 수 있으므로 캐시 무효화 + 재요청
           contextLoadedConvs.delete(convId);
@@ -452,6 +478,7 @@ class WebSocketClient {
         const createdConv = chat.conversations[convId];
         const createdProjectKey = createdConv?.projectKey ?? '';
         useSystemStore.getState().openBranchPanel(branchId, convId, label, createdProjectKey, checkpointId ?? undefined);
+        dbSync.syncBranch({ id: branchId, conversationId: convId, label, checkpointId: checkpointId ?? undefined, sessionId: convId });
         // Refresh branch list
         if (convId && createdProjectKey) {
           this.sendRpc('project.context', { conversation_id: convId, project: createdProjectKey });
@@ -470,6 +497,7 @@ class WebSocketClient {
         const convId = params.conversation_id as string;
         console.log('[branch.adopted]', { branchId, convId, mainMessages: chat.messages[convId]?.length ?? 0 });
         chat.setActiveBranch(null);
+        dbSync.syncBranchStatus(branchId, 'adopted');
         // Close branch panel on adopt
         if (useSystemStore.getState().branchPanelBranchId === branchId) {
           useSystemStore.getState().closeBranchPanel();
@@ -489,6 +517,7 @@ class WebSocketClient {
         if (chat.activeBranchId === branchId) {
           chat.setActiveBranch(null);
         }
+        dbSync.syncBranchStatus(branchId, 'archived');
         // Close branch panel if viewing this branch
         const sys = useSystemStore.getState();
         if (sys.branchPanelBranchId === branchId) {
@@ -504,6 +533,7 @@ class WebSocketClient {
         }
         useContextStore.getState().removeConvBranch(branchId);
         chat.clearMessages(`branch:${branchId}`);
+        dbSync.syncDeleteBranch(branchId);
         // Close branch panel if viewing this branch
         const sysState = useSystemStore.getState();
         if (sysState.branchPanelBranchId === branchId) {

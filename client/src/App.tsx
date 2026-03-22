@@ -6,6 +6,7 @@ import { ChatArea } from './components/layout/ChatArea';
 import { BranchPanel } from './components/layout/BranchPanel';
 import { TopNav } from './components/layout/TopNav';
 import { cn } from './lib/utils';
+import { hydrateFromDb } from './lib/dbHydrate';
 import {
   SidebarSimple
 } from '@phosphor-icons/react';
@@ -18,7 +19,8 @@ function App() {
   const [isResizing, setIsResizing] = useState(false);
 
   useEffect(() => {
-    wsClient.connect();
+    // SQLite에서 로컬 캐시 하이드레이션 후 WS 연결
+    hydrateFromDb().then(() => wsClient.connect());
   }, []);
 
   // Responsive Auto-Hide & Restore (sidebar only)

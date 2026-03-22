@@ -137,6 +137,10 @@ CREATE TABLE messages (
   timestamp       INTEGER NOT NULL,
   status          TEXT DEFAULT 'done', -- sending | streaming | done | error
   progress_content TEXT,
+  -- per-message model metadata (Sprint 7에서 추가)
+  engine          TEXT,    -- 메시지 생성 시 사용된 엔진 (claude, gemini, codex, ...)
+  model           TEXT,    -- 메시지 생성 시 사용된 모델 (opus-4, flash-3, ...)
+  persona         TEXT,    -- 토론 시 페르소나/역할
   metadata        TEXT, -- JSON, 향후 확장용
   created_at      INTEGER NOT NULL DEFAULT (unixepoch())
 );
@@ -169,14 +173,16 @@ CREATE TABLE branches (
   id              TEXT PRIMARY KEY,
   conversation_id TEXT NOT NULL REFERENCES conversations(id),
   label           TEXT NOT NULL,
-  status          TEXT NOT NULL DEFAULT 'active',
-  checkpoint_id   TEXT,
+  status          TEXT NOT NULL DEFAULT 'active', -- active | adopted | archived | deleted
+  checkpoint_id   TEXT,    -- 분기 시점 메시지 ID (부모 context 복원용)
+  session_id      TEXT,    -- 부모 대화 conv_id (tunapi에서 session_id로 전달)
   git_branch      TEXT,
   parent_branch_id TEXT,
   created_at      INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
 CREATE INDEX idx_branch_conv ON branches(conversation_id);
+CREATE INDEX idx_branch_session ON branches(session_id);
 
 -- 스키마 버전 관리
 CREATE TABLE schema_version (
@@ -184,7 +190,9 @@ CREATE TABLE schema_version (
   applied_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
-INSERT INTO schema_version (version) VALUES (1);
+INSERT INTO schema_version (version) VALUES (2);
+-- v1: 초기 스키마 (프로젝트, 대화, 메시지, 브랜치, FTS5)
+-- v2: messages에 engine/model/persona 추가, branches에 session_id 추가
 ```
 
 ### 4.2 향후 확장 테이블 (Sprint 8 이후)
@@ -275,15 +283,22 @@ export async function upsertMessage(msg: {
   content: string;
   timestamp: number;
   status?: string;
+  engine?: string;
+  model?: string;
+  persona?: string;
 }): Promise<void> {
   const d = await initDb();
   await d.execute(
-    `INSERT INTO messages (id, conversation_id, role, content, timestamp, status)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO messages (id, conversation_id, role, content, timestamp, status, engine, model, persona)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        content = excluded.content,
-       status = excluded.status`,
-    [msg.id, msg.conversationId, msg.role, msg.content, msg.timestamp, msg.status ?? 'done']
+       status = excluded.status,
+       engine = COALESCE(excluded.engine, engine),
+       model = COALESCE(excluded.model, model),
+       persona = COALESCE(excluded.persona, persona)`,
+    [msg.id, msg.conversationId, msg.role, msg.content, msg.timestamp,
+     msg.status ?? 'done', msg.engine ?? null, msg.model ?? null, msg.persona ?? null]
   );
 }
 
@@ -343,18 +358,22 @@ export async function loadMessages(
   conversationId: string,
   limit = 100,
   beforeTimestamp?: number,
-): Promise<Array<{ id: string; role: string; content: string; timestamp: number; status: string }>> {
+): Promise<Array<{
+  id: string; role: string; content: string; timestamp: number;
+  status: string; engine?: string; model?: string; persona?: string;
+}>> {
   const d = await initDb();
+  const cols = 'id, role, content, timestamp, status, engine, model, persona';
   if (beforeTimestamp) {
     return d.select(
-      `SELECT id, role, content, timestamp, status FROM messages
+      `SELECT ${cols} FROM messages
        WHERE conversation_id = ? AND timestamp < ?
        ORDER BY timestamp DESC LIMIT ?`,
       [conversationId, beforeTimestamp, limit]
     );
   }
   return d.select(
-    `SELECT id, role, content, timestamp, status FROM messages
+    `SELECT ${cols} FROM messages
      WHERE conversation_id = ?
      ORDER BY timestamp DESC LIMIT ?`,
     [conversationId, limit]
