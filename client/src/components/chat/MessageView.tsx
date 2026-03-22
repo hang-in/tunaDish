@@ -110,12 +110,14 @@ function BranchAdoptCard({ content }: { content: string }) {
 // --- Message View ---
 const proseClasses =
   'prose prose-sm dark:prose-invert max-w-none text-[14px] leading-relaxed ' +
-  'prose-p:my-1.5 prose-headings:font-semibold prose-headings:text-on-surface prose-headings:mt-4 prose-headings:mb-2 ' +
+  'prose-p:my-1.5 prose-p:text-[1em] ' +
+  // 헤딩: 크기 동일(1em), bold만 구분
+  'prose-headings:text-[1em] prose-headings:font-bold prose-headings:text-on-surface prose-headings:mt-4 prose-headings:mb-2 ' +
   'prose-pre:rounded-lg prose-pre:my-3 prose-pre:!bg-[#010101] ' +
   'prose-code:text-[13px] prose-code:before:content-none prose-code:after:content-none ' +
-  'prose-strong:text-on-surface prose-li:my-0.5 prose-ol:my-1.5 prose-ul:my-1.5 ' +
-  'prose-blockquote:border-primary/20 prose-blockquote:text-on-surface-variant prose-blockquote:not-italic ' +
-  'prose-th:text-[14px] prose-th:font-semibold prose-th:font-sans prose-td:text-[14px] prose-td:font-normal prose-td:font-sans';
+  'prose-strong:text-on-surface prose-li:my-0.5 prose-li:text-[1em] prose-ol:my-1.5 prose-ul:my-1.5 ' +
+  'prose-blockquote:border-primary/20 prose-blockquote:text-on-surface-variant prose-blockquote:not-italic prose-blockquote:text-[1em] ' +
+  'prose-th:text-[1em] prose-th:font-semibold prose-td:text-[1em] prose-td:font-normal';
 
 export function MessageView({ msg, isGrouped, isRoleSwitch = false }: { msg: ChatMessage; isGrouped: boolean; isRoleSwitch?: boolean }) {
   // Branch adopt summary card — special rendering
