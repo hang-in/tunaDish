@@ -48,6 +48,14 @@ export interface DiscussionState {
   status: 'pending' | 'in_progress' | 'completed' | 'abandoned';
 }
 
+/** Conversation-level settings (override project defaults) */
+export interface ConvSettings {
+  engine?: string;
+  model?: string;
+  persona?: string;
+  triggerMode?: string;
+}
+
 export interface Conversation {
   id: string;
   projectKey: string;
@@ -57,6 +65,7 @@ export interface Conversation {
   engine?: string;
   model?: string;
   triggerMode?: string;
+  persona?: string;
   hasResumeToken?: boolean;
   pendingReviewCount?: number;
   createdAt: number;
@@ -125,6 +134,9 @@ interface ChatState {
   clearMessages: (convId: string) => void;
   removeConversation: (convId: string) => void;
 
+  // Conversation settings
+  updateConvSettings: (convId: string, settings: Partial<ConvSettings>) => void;
+
   // Branch actions
   setActiveBranch: (branchId: string | null, label?: string | null) => void;
 
@@ -176,6 +188,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loadConversations: (convs) => set((state) => {
     const newConvs = { ...state.conversations };
     for (const c of convs) {
+      // branch: prefix 가진 conversation은 서버 목록에서 무시 (BranchPanel이 직접 관리)
+      if (c.id.startsWith('branch:')) continue;
+
       const existing = newConvs[c.id];
       if (existing) {
         // 서버 메타데이터로 업데이트 (label, source 등 갱신)
@@ -297,6 +312,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const arr = state.messages[convId] ?? [];
     const updated = arr.map(m => m.id === msgId ? { ...m, content: newContent } : m);
     return { messages: { ...state.messages, [convId]: updated }, editingMsgId: null };
+  }),
+
+  // Conversation settings
+  updateConvSettings: (convId, settings) => set((state) => {
+    const conv = state.conversations[convId];
+    if (!conv) return state;
+    return {
+      conversations: {
+        ...state.conversations,
+        [convId]: { ...conv, ...settings },
+      },
+    };
   }),
 
   // Branch actions

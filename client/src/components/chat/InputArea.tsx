@@ -1,9 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useChatStore } from '@/store/chatStore';
 import { useRunStore } from '@/store/runStore';
 import { useContextStore } from '@/store/contextStore';
+import { useConvSettings } from '@/lib/useConvSettings';
 import { wsClient } from '@/lib/wsClient';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -11,7 +10,6 @@ import {
   PaperPlaneRight,
   Stop,
   Paperclip,
-  MarkdownLogo,
   GitMerge,
   GitBranch,
   Lightning,
@@ -20,7 +18,68 @@ import {
   CaretDown,
   ArrowBendUpLeft,
   X,
+  MagnifyingGlass,
+  TreeStructure,
+  Gear,
+  UserCircle,
+  Eraser,
+  ArrowsClockwise,
 } from '@phosphor-icons/react';
+
+// --- Command palette ---
+interface Command {
+  name: string;
+  desc: string;
+  icon: React.ReactNode;
+  insert: string;          // text inserted into input (replaces "!" prefix)
+  immediate?: boolean;     // if true, send immediately on select
+}
+
+const COMMANDS: Command[] = [
+  { name: 'search', desc: '코드 검색', icon: <MagnifyingGlass size={14} className="text-blue-400" />, insert: '!search ' },
+  { name: 'map', desc: '프로젝트 구조 보기', icon: <TreeStructure size={14} className="text-emerald-400" />, insert: '!map ' },
+  { name: 'model', desc: '엔진/모델 변경', icon: <Lightning size={14} className="text-primary" />, insert: '!model ' },
+  { name: 'persona', desc: '페르소나 변경', icon: <UserCircle size={14} className="text-violet-400" />, insert: '!persona ' },
+  { name: 'trigger', desc: '트리거 모드 변경', icon: <Broadcast size={14} className="text-emerald-400" />, insert: '!trigger ' },
+  { name: 'clear', desc: '대화 기록 초기화', icon: <Eraser size={14} className="text-red-400" />, insert: '!clear', immediate: true },
+  { name: 'refresh', desc: '컨텍스트 새로고침', icon: <ArrowsClockwise size={14} className="text-amber-400" />, insert: '!refresh', immediate: true },
+  { name: 'config', desc: 'WS 연결 설정', icon: <Gear size={14} className="text-on-surface-variant/60" />, insert: '!config ' },
+];
+
+function CommandPalette({ query, onSelect, selectedIndex }: {
+  query: string;
+  onSelect: (cmd: Command) => void;
+  selectedIndex: number;
+}) {
+  const filtered = useMemo(
+    () => COMMANDS.filter(c => c.name.includes(query.toLowerCase())),
+    [query],
+  );
+
+  if (filtered.length === 0) return null;
+
+  return (
+    <div className="absolute bottom-full left-0 right-0 mb-1 mx-0 bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl overflow-hidden z-20">
+      <div className="px-3 py-1.5 border-b border-white/5 text-[10px] text-on-surface-variant/40 font-semibold uppercase tracking-wider">Commands</div>
+      {filtered.map((cmd, i) => (
+        <button
+          key={cmd.name}
+          onMouseDown={e => { e.preventDefault(); onSelect(cmd); }}
+          className={cn(
+            'flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors',
+            i === selectedIndex % filtered.length
+              ? 'bg-primary/15 text-on-surface'
+              : 'text-on-surface-variant/70 hover:bg-white/5',
+          )}
+        >
+          {cmd.icon}
+          <span className="text-[12px] font-medium">!{cmd.name}</span>
+          <span className="text-[11px] text-on-surface-variant/40 ml-auto">{cmd.desc}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // --- QuickChips ---
 const TRIGGER_MODES = [
@@ -29,19 +88,19 @@ const TRIGGER_MODES = [
   { value: 'off', label: 'Off', desc: '자동 응답 끔' },
 ] as const;
 
-function QuickChipEngine({ convId }: { convId: string }) {
-  const ctx = useContextStore(s => s.projectContext);
-  const engine = ctx?.engine ?? 'claude';
-  const model = ctx?.model;
-  const availableEngines = ctx?.availableEngines ?? {};
+function QuickChipEngine({ convId, compact }: { convId: string; compact?: boolean }) {
+  const { engine, model, availableEngines } = useConvSettings(convId);
+  const updateSettings = useChatStore(s => s.updateConvSettings);
   const [open, setOpen] = useState(false);
 
   const selectModel = (eng: string, m: string) => {
+    updateSettings(convId, { engine: eng, model: m });
     wsClient.sendRpc('model.set', { conversation_id: convId, engine: eng, model: m });
     setOpen(false);
   };
 
   const selectEngine = (eng: string) => {
+    updateSettings(convId, { engine: eng, model: undefined });
     wsClient.sendRpc('model.set', { conversation_id: convId, engine: eng });
     setOpen(false);
   };
@@ -58,7 +117,7 @@ function QuickChipEngine({ convId }: { convId: string }) {
       >
         <Lightning size={12} weight="fill" className="text-primary" />
         <span className="hidden sm:inline">{engine}{model ? `/${model}` : ''}</span>
-        <CaretDown size={10} className="opacity-50" />
+        {!compact && <CaretDown size={10} className="opacity-50" />}
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={6} className="w-52 p-1 max-h-72 overflow-y-auto">
         {engineIds.map(eng => {
@@ -97,15 +156,17 @@ function QuickChipEngine({ convId }: { convId: string }) {
   );
 }
 
-function QuickChipPersona({ convId }: { convId: string }) {
-  const ctx = useContextStore(s => s.projectContext);
-  const persona = ctx?.persona;
+function QuickChipPersona({ convId, compact }: { convId: string; compact?: boolean }) {
+  const { persona } = useConvSettings(convId);
+  const updateSettings = useChatStore(s => s.updateConvSettings);
   const [open, setOpen] = useState(false);
 
   const PRESETS = ['default', 'concise', 'creative', 'technical'];
 
   const selectPersona = (p: string) => {
-    wsClient.sendRpc('persona.set', { conversation_id: convId, persona: p === 'default' ? '' : p });
+    const value = p === 'default' ? '' : p;
+    updateSettings(convId, { persona: value || undefined });
+    wsClient.sendRpc('persona.set', { conversation_id: convId, persona: value });
     setOpen(false);
   };
 
@@ -116,8 +177,8 @@ function QuickChipPersona({ convId }: { convId: string }) {
           bg-white/5 hover:bg-white/10 text-on-surface-variant/70 hover:text-on-surface transition-colors cursor-pointer"
       >
         <Brain size={12} className="text-violet-400" />
-        <span className="hidden sm:inline">{persona || 'default'}</span>
-        <CaretDown size={10} className="opacity-50" />
+        {!compact && <span className="hidden sm:inline">{persona || 'default'}</span>}
+        {!compact && <CaretDown size={10} className="opacity-50" />}
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={6} className="w-44 p-1">
         <div className="text-[10px] font-semibold text-on-surface-variant/50 uppercase px-2 pt-0.5 pb-1 mb-0.5 border-b border-outline-variant/20">Persona</div>
@@ -140,12 +201,13 @@ function QuickChipPersona({ convId }: { convId: string }) {
   );
 }
 
-function QuickChipTrigger({ convId }: { convId: string }) {
-  const ctx = useContextStore(s => s.projectContext);
-  const trigger = ctx?.triggerMode ?? 'always';
+function QuickChipTrigger({ convId, compact }: { convId: string; compact?: boolean }) {
+  const { triggerMode: trigger } = useConvSettings(convId);
+  const updateSettings = useChatStore(s => s.updateConvSettings);
   const [open, setOpen] = useState(false);
 
   const selectTrigger = (mode: string) => {
+    updateSettings(convId, { triggerMode: mode });
     wsClient.sendRpc('trigger.set', { conversation_id: convId, mode });
     setOpen(false);
   };
@@ -157,8 +219,8 @@ function QuickChipTrigger({ convId }: { convId: string }) {
           bg-white/5 hover:bg-white/10 text-on-surface-variant/70 hover:text-on-surface transition-colors cursor-pointer"
       >
         <Broadcast size={12} className="text-emerald-400" />
-        <span className="hidden sm:inline">{trigger}</span>
-        <CaretDown size={10} className="opacity-50" />
+        {!compact && <span className="hidden sm:inline">{trigger}</span>}
+        {!compact && <CaretDown size={10} className="opacity-50" />}
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={6} className="w-52 p-1">
         <div className="text-[10px] font-semibold text-on-surface-variant/50 uppercase px-2 pt-0.5 pb-1 mb-0.5 border-b border-outline-variant/20">Trigger Mode</div>
@@ -181,9 +243,9 @@ function QuickChipTrigger({ convId }: { convId: string }) {
 }
 
 // --- Input Area ---
-export function InputArea({ overrideConversationId }: { overrideConversationId?: string } = {}) {
+export function InputArea({ overrideConversationId, compact }: { overrideConversationId?: string; compact?: boolean } = {}) {
   const [input, setInput] = useState('');
-  const [showPreview, setShowPreview] = useState(false);
+  const [cmdIndex, setCmdIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const storeConversationId = useChatStore(s => s.activeConversationId);
   const activeConversationId = overrideConversationId ?? storeConversationId;
@@ -197,6 +259,35 @@ export function InputArea({ overrideConversationId }: { overrideConversationId?:
   });
   const requestCancel = useRunStore(s => s.requestCancel);
   const isRunning = runStatus === 'running' || runStatus === 'cancelling';
+  const convSettings = useConvSettings(activeConversationId);
+  const placeholderText = `ask to ${convSettings.engine}${convSettings.model ? '/' + convSettings.model : ''}`;
+
+  // Command palette: show when input starts with "!" and has no newlines
+  const cmdMatch = input.match(/^!(\S*)$/);
+  const showCmdPalette = !!cmdMatch;
+  const cmdQuery = cmdMatch?.[1] ?? '';
+  const filteredCmds = useMemo(
+    () => COMMANDS.filter(c => c.name.includes(cmdQuery.toLowerCase())),
+    [cmdQuery],
+  );
+
+  const handleCmdSelect = useCallback((cmd: Command) => {
+    setInput(cmd.insert);
+    setCmdIndex(0);
+    if (cmd.immediate) {
+      // defer so input updates first
+      setTimeout(() => {
+        if (!activeConversationId) return;
+        pushMessage(activeConversationId, {
+          id: crypto.randomUUID(), role: 'user', content: cmd.insert, timestamp: Date.now(), status: 'done',
+        });
+        wsClient.sendRpc('chat.send', { conversation_id: activeConversationId, text: cmd.insert });
+        setInput('');
+      }, 0);
+    } else {
+      setTimeout(() => textareaRef.current?.focus(), 10);
+    }
+  }, [activeConversationId, pushMessage]);
 
   const handleSend = () => {
     if (!input.trim() || !activeConversationId) return;
@@ -224,6 +315,28 @@ export function InputArea({ overrideConversationId }: { overrideConversationId?:
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (showCmdPalette && filteredCmds.length > 0) {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setCmdIndex(i => (i - 1 + filteredCmds.length) % filteredCmds.length);
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setCmdIndex(i => (i + 1) % filteredCmds.length);
+        return;
+      }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+        e.preventDefault();
+        handleCmdSelect(filteredCmds[cmdIndex % filteredCmds.length]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setInput('');
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
@@ -238,15 +351,9 @@ export function InputArea({ overrideConversationId }: { overrideConversationId?:
 
   return (
     <div className="absolute bottom-0 left-0 right-0 p-4 pb-8 flex-shrink-0 z-10">
-      {showPreview && input.trim() && (
-        <div className="max-w-3xl mx-auto mb-3 p-4 rounded-xl border border-outline-variant/40 bg-surface-container-high prose prose-sm dark:prose-invert max-w-none text-[13px]">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{input}</ReactMarkdown>
-        </div>
-      )}
-
-      {/* Reply banner */}
+{/* Reply banner */}
       {replyTo && (
-        <div className="max-w-3xl mx-auto mb-1.5 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a1a1a]/95 border border-violet-400/20">
+        <div className="mb-1.5 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a1a1a]/95 border border-violet-400/20">
           <ArrowBendUpLeft size={11} className="text-violet-400 shrink-0" />
           <span className="flex-1 text-[11px] text-on-surface-variant/60 truncate leading-tight">{replyTo.content}</span>
           <button onClick={clearReplyTo} className="p-1 rounded-full hover:bg-white/10 text-on-surface-variant/40 hover:text-on-surface-variant transition-colors shrink-0">
@@ -255,40 +362,46 @@ export function InputArea({ overrideConversationId }: { overrideConversationId?:
         </div>
       )}
 
-      <div className="max-w-3xl mx-auto relative bg-[#161616]/95 backdrop-blur-xl rounded-xl border border-white/5 focus-within:border-primary/50 transition-colors shadow-2xl">
+      <div className="relative bg-[#161616]/95 backdrop-blur-xl rounded-xl border border-white/5 focus-within:border-primary/50 transition-colors shadow-2xl">
+        {/* Command palette */}
+        {showCmdPalette && (
+          <CommandPalette query={cmdQuery} onSelect={handleCmdSelect} selectedIndex={cmdIndex} />
+        )}
         {/* QuickChips */}
         {activeConversationId && (
           <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-0">
-            <QuickChipEngine convId={activeConversationId} />
-            <QuickChipPersona convId={activeConversationId} />
-            <QuickChipTrigger convId={activeConversationId} />
+            <QuickChipEngine convId={activeConversationId} compact={compact} />
+            <QuickChipPersona convId={activeConversationId} compact={compact} />
+            <QuickChipTrigger convId={activeConversationId} compact={compact} />
           </div>
         )}
 
-        {/* Git Branch + Merge Button (Top Right) */}
-        <div className="absolute top-2.5 right-3 flex items-center gap-1.5">
-          {gitBranch && (
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono text-on-surface-variant/50 bg-white/5">
-              <GitBranch size={12} className="text-emerald-400/60" />
-              {gitBranch}
-            </span>
-          )}
-          <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-white/5 hover:bg-white/10 text-on-surface-variant/70 hover:text-on-surface transition-colors cursor-pointer">
-            <GitMerge size={14} weight="bold" className="text-amber-500" />
-            <span className="hidden sm:inline">Merge</span>
-          </button>
-        </div>
+        {/* Git Branch + Merge Button (Top Right) — hidden in compact mode */}
+        {!compact && (
+          <div className="absolute top-2.5 right-3 flex items-center gap-1.5">
+            {gitBranch && (
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono text-on-surface-variant/50 bg-white/5">
+                <GitBranch size={12} className="text-emerald-400/60" />
+                {gitBranch}
+              </span>
+            )}
+            <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-white/5 hover:bg-white/10 text-on-surface-variant/70 hover:text-on-surface transition-colors cursor-pointer">
+              <GitMerge size={14} weight="bold" className="text-amber-500" />
+              <span className="hidden sm:inline">Merge</span>
+            </button>
+          </div>
+        )}
 
         <textarea
           ref={textareaRef}
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={e => { setInput(e.target.value); setCmdIndex(0); }}
           onKeyDown={handleKeyDown}
-          placeholder="Ask anything..."
+          placeholder={placeholderText}
           rows={1}
           className={cn(
             'w-full bg-transparent border-none focus:ring-0 text-[14px] px-4 pt-2 pb-[52px] resize-none',
-            'placeholder:text-on-surface-variant/40 text-on-surface',
+            'placeholder:text-on-surface-variant/25 placeholder:font-light placeholder:italic text-on-surface',
             'focus-visible:outline-none focus:outline-none',
             'disabled:cursor-not-allowed disabled:opacity-50',
             'min-h-[100px] max-h-[300px]',
@@ -297,15 +410,6 @@ export function InputArea({ overrideConversationId }: { overrideConversationId?:
         <div className="absolute bottom-3 left-3 flex items-center gap-1">
           <button disabled className="p-1.5 hover:bg-white/5 rounded-md text-on-surface-variant transition-colors disabled:opacity-30" title="Attach">
             <Paperclip size={18} />
-          </button>
-          <button
-            onClick={() => setShowPreview(!showPreview)}
-            className={cn('p-1.5 rounded-md transition-colors',
-              showPreview ? 'text-primary bg-primary/10' : 'text-on-surface-variant hover:bg-white/5'
-            )}
-            title="Preview"
-          >
-            <MarkdownLogo size={18} />
           </button>
         </div>
         <div className="absolute bottom-3 right-3 flex items-center gap-2">

@@ -8,6 +8,7 @@ type RequestParams = Record<string, unknown>;
 
 interface PendingRequest {
   method: string;
+  params: RequestParams;
   resolve: (result: unknown) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -82,7 +83,12 @@ class WebSocketClient {
           // 표준 response를 notification 파이프라인으로 전달 (UI store 반영)
           if (data.result) {
             const notifMethod = data.method ?? `${req.method}.result`;
-            this.handleNotification({ method: notifMethod, params: data.result });
+            // 서버가 echo하지 않는 요청 파라미터를 result에 병합 (branch_id 등)
+            const merged = { ...data.result };
+            if (req.params.branch_id && !merged.branch_id) {
+              merged.branch_id = req.params.branch_id;
+            }
+            this.handleNotification({ method: notifMethod, params: merged });
           }
           return;
         }
@@ -161,7 +167,7 @@ class WebSocketClient {
           resolve(undefined);
         }
       }, RPC_TIMEOUT_MS);
-      this.pending.set(id, { method, resolve, reject, timer });
+      this.pending.set(id, { method, params, resolve, reject, timer });
       this.ws!.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }));
     });
   }
@@ -270,6 +276,9 @@ class WebSocketClient {
         break;
       case 'conversation.history.result': {
         const convId = params.conversation_id as string;
+        const branchId = params.branch_id as string | undefined;
+        // branch history는 branch:${branch_id} 키로 저장
+        const historyKey = branchId ? `branch:${branchId}` : convId;
         const raw = params.messages as Array<{ role: string; content: string; timestamp: string }>;
         const msgs = raw.map((m, i) => ({
           id: `hist-${i}`,
@@ -278,7 +287,7 @@ class WebSocketClient {
           timestamp: new Date(m.timestamp).getTime(),
           status: 'done' as const,
         }));
-        chat.setHistory(convId, msgs);
+        chat.setHistory(historyKey, msgs);
         break;
       }
       case 'conversation.list.result': {
@@ -305,6 +314,17 @@ class WebSocketClient {
             timestamp: Date.now(),
             status: 'done',
           });
+          // 서버가 settings를 포함하면 conversation-level 설정 확정 (optimistic update 보정)
+          const settings = (params as Record<string, unknown>).settings as
+            { engine?: string; model?: string; persona?: string; trigger_mode?: string } | undefined;
+          if (settings) {
+            chat.updateConvSettings(convId, {
+              engine: settings.engine,
+              model: settings.model,
+              persona: settings.persona,
+              triggerMode: settings.trigger_mode,
+            });
+          }
           // command(model.set, trigger.set 등)로 context가 바뀔 수 있으므로 캐시 무효화 + 재요청
           contextLoadedConvs.delete(convId);
           const conv = chat.conversations[convId];
@@ -358,6 +378,18 @@ class WebSocketClient {
           markdown: raw.markdown,
         };
         ctxStore.setProjectContext(ctx);
+        // conversation-level settings (서버가 conv_settings를 포함하면 적용)
+        const convSettings = (p as Record<string, unknown>).conv_settings as
+          { engine?: string; model?: string; persona?: string; trigger_mode?: string } | undefined;
+        const ctxConvId = (p as Record<string, unknown>).conversation_id as string | undefined;
+        if (convSettings && ctxConvId) {
+          chat.updateConvSettings(ctxConvId, {
+            engine: convSettings.engine,
+            model: convSettings.model,
+            persona: convSettings.persona,
+            triggerMode: convSettings.trigger_mode,
+          });
+        }
         break;
       }
       case 'branch.list.json.result': {

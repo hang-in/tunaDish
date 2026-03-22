@@ -5,11 +5,7 @@
 @import "@fontsource/open-sans/500.css";
 @import "@fontsource/open-sans/600.css";
 @import "@fontsource/open-sans/700.css";
-@import "@fontsource/noto-sans-kr/300.css";
-@import "@fontsource/noto-sans-kr/400.css";
-@import "@fontsource/noto-sans-kr/500.css";
-@import "@fontsource/noto-sans-kr/600.css";
-@import "@fontsource/noto-sans-kr/700.css";
+@import "@fontsource-variable/noto-sans-kr";
 @import "@fontsource-variable/jetbrains-mono";
 @tailwind base;
 @tailwind components;
@@ -18,7 +14,7 @@
 @layer base {
   .theme {
     --font-heading: var(--font-sans);
-    --font-sans: 'Open Sans', 'Noto Sans KR', sans-serif;
+    --font-sans: 'Open Sans', 'Noto Sans KR Variable', sans-serif;
     --font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, monospace;
   }
 
@@ -69,7 +65,7 @@
 /* ── Prose / Code blocks ── */
 .prose pre {
   background: #010101 !important;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.06);
   border-radius: 8px;
 }
 .prose pre code {
@@ -88,14 +84,34 @@
   font-family: var(--font-mono);
 }
 
+/* ── Prose tables (Mattermost-style) ── */
+.prose table {
+  border-collapse: collapse;
+  border: none;
+}
+.prose th,
+.prose td {
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.prose thead th {
+  background: rgba(255,255,255,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+  font-weight: 600;
+  color: #e5e2e1;
+}
+.prose tbody tr:nth-child(even) {
+  background: rgba(255,255,255,0.015);
+}
+
 /* ── Sidebar channel item (Mattermost SidebarChannel state pattern) ── */
 @layer components {
   .sidebar-item {
     display: flex;
     align-items: center;
-    height: var(--sidebar-item-height);
-    padding-top: 0;
-    padding-bottom: 0;
+    min-height: var(--sidebar-item-height);
+    padding-top: 1px;
+    padding-bottom: 1px;
+    line-height: 1.5;
     padding-right: 8px;
     /* padding-left is controlled by Tailwind pl-* classes per item */
     border-radius: 4px;
@@ -154,11 +170,11 @@
   }
 }
 
-/* ── Message group layout (Slack-style full-width rows) ── */
+/* ── Message group layout (Mattermost-style full-width rows) ── */
 .msg-row {
   display: flex;
   gap: 0;
-  padding: 4px 20px;
+  padding: 6px 20px;
   transition: background-color 120ms ease;
 }
 .msg-row:hover {
@@ -167,7 +183,7 @@
 .msg-row--user:hover {
   background-color: rgba(120, 160, 255, 0.04);
 }
-.msg-row.is-grouped { padding-top: 1px; padding-bottom: 1px; }
+.msg-row.is-grouped { padding-top: 2px; padding-bottom: 2px; }
 .msg-row__avatar-col {
   width: var(--msg-avatar-gutter);
   flex-shrink: 0;
@@ -200,7 +216,7 @@
 .msg-row__body {
   flex: 1;
   min-width: 0;
-  max-width: 56rem; /* 4xl */
+  width: 100%;
 }
 .msg-row__content {
   font-size: 14px;

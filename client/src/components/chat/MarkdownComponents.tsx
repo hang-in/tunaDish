@@ -42,7 +42,7 @@ function CodeBlock({ children, node: _node, ...rest }: ComponentPropsWithoutRef<
   }, [codeText]);
 
   return (
-    <div className="relative group/code my-3">
+    <div className="relative group/code my-2">
       <div className="flex items-center justify-between px-3 py-1 rounded-t-lg bg-[#1a1a1a] border-b border-white/5 text-[10px]">
         <span className="font-mono text-on-surface-variant/40 uppercase tracking-wider">
           {language || 'code'}
@@ -91,7 +91,7 @@ function CodeBlock({ children, node: _node, ...rest }: ComponentPropsWithoutRef<
 
 function ScrollTable({ children, node: _node, ...rest }: ComponentPropsWithoutRef<'table'> & { node?: unknown }) {
   return (
-    <div className="overflow-x-auto my-3 rounded-lg border border-white/5">
+    <div className="overflow-x-auto my-2 rounded-lg">
       <table {...rest} className="min-w-full">
         {children}
       </table>

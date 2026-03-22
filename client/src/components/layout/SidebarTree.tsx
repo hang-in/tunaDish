@@ -77,13 +77,13 @@ function TreeNodeItem({ node, isLast, lineGuides }: {
   return (
     <>
       {/* ── Row ── */}
-      <div className="relative" style={{ height: ROW_H }}>
+      <div className="relative flex items-center" style={{ minHeight: ROW_H }}>
         {/* 트리 연결선 */}
         <TreeGuides lineGuides={lineGuides} isLast={isLast} depth={depth} />
 
         {/* 컨텐츠 (paddingLeft = depth * INDENT) */}
         <div
-          className="absolute inset-0 flex items-center"
+          className="flex items-center flex-1 min-w-0 leading-normal"
           style={{ paddingLeft: depth * INDENT }}
         >
           <NodeContent node={node} open={open} toggle={toggle} hasChildren={hasChildren} />
@@ -214,7 +214,7 @@ function CategoryRow({ node, open, toggle }: { node: SidebarNode; open: boolean;
   return (
     <div className="flex items-center justify-between w-full px-1 cursor-pointer group" onClick={toggle}>
       <div className="flex items-center gap-1.5 min-w-0">
-        <span className="text-on-surface-variant/40 group-hover:text-on-surface-variant/60 transition-colors">{icon}</span>
+        <span className="shrink-0 self-center text-on-surface-variant/40 group-hover:text-on-surface-variant/60 transition-colors">{icon}</span>
         <span className="text-[10px] font-semibold tracking-wider text-on-surface-variant/40 uppercase group-hover:text-on-surface-variant/60 transition-colors">
           {node.name}
         </span>
@@ -314,7 +314,7 @@ function SessionRow({ node, open, toggle, hasChildren }: {
       onClick={handleClick}
     >
       {hasChildren && <span className="shrink-0 mr-0.5"><Arrow open={open} /></span>}
-      <span className="shrink-0 w-[18px] flex items-center justify-center mr-1">
+      <span className="shrink-0 self-center w-[18px] flex items-center justify-center mr-1">
         <TransportIcon source={conv.source} active={isActive} />
       </span>
       <span className="flex-1 truncate text-[13px]">{conv.label}</span>
@@ -412,7 +412,7 @@ function ConvBranchRow({ node }: { node: SidebarNode }) {
       )}
       onClick={handleClick}
     >
-      <GitFork size={12} className="text-violet-400/60 shrink-0" />
+      <GitFork size={12} className="text-violet-400/60 shrink-0 self-center" />
       <span className="truncate flex-1">{branch.label}</span>
       <button type="button" tabIndex={-1} onClick={handleDeleteClick}
         className="hidden group-hover/branch:flex items-center justify-center size-4 rounded text-on-surface-variant/30 hover:text-red-400 hover:bg-red-400/10 transition-colors shrink-0"
@@ -429,7 +429,7 @@ function GitSectionRow({ node, open, toggle }: { node: SidebarNode; open: boolea
   return (
     <div className="flex items-center justify-between w-full pr-1 cursor-pointer group" onClick={toggle}>
       <div className="flex items-center gap-1.5 min-w-0 flex-1">
-        <GitBranch size={11} className="text-on-surface-variant/40 group-hover:text-on-surface-variant/60 transition-colors shrink-0" />
+        <GitBranch size={11} className="text-on-surface-variant/40 group-hover:text-on-surface-variant/60 transition-colors shrink-0 self-center" />
         <span className="text-[10px] font-semibold tracking-wider text-on-surface-variant/40 uppercase group-hover:text-on-surface-variant/60 transition-colors">
           {node.name}
         </span>
@@ -446,7 +446,7 @@ function GitBranchRow({ node }: { node: SidebarNode }) {
   if (!gb) return null;
   return (
     <div className="flex items-center gap-1.5 w-full pr-1 text-[11px] text-on-surface-variant/60 hover:bg-white/3 rounded cursor-default">
-      <GitBranch size={12} className={cn('shrink-0', gb.status === 'active' ? 'text-emerald-400/60' : 'text-on-surface-variant/25')} />
+      <GitBranch size={12} className={cn('shrink-0 self-center', gb.status === 'active' ? 'text-emerald-400/60' : 'text-on-surface-variant/25')} />
       <span className="truncate flex-1">{gb.name}</span>
       {gb.linkedEntryCount > 0 && <span className="text-[9px] text-on-surface-variant/25 shrink-0">{gb.linkedEntryCount} entries</span>}
     </div>

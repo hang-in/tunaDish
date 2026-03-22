@@ -15,7 +15,7 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Geist Variable', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['Open Sans', 'Noto Sans KR Variable', 'ui-sans-serif', 'sans-serif'],
         mono: ['JetBrains Mono Variable', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       colors: {

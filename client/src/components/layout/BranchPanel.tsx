@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSystemStore } from '@/store/systemStore';
 import { useChatStore, type ChatMessage } from '@/store/chatStore';
 import { useContextStore } from '@/store/contextStore';
@@ -78,31 +78,36 @@ export function BranchPanel() {
   );
 
   // checkpoint 기반 부모 컨텍스트 (브랜치를 만든 메시지 쌍)
-  const parentContext = useRef<ChatMessage[]>([]);
+  const [parentContext, setParentContext] = useState<ChatMessage[]>([]);
 
   // Bootstrap: create branch conversation + load history
   useEffect(() => {
     if (!branchChannel || !branchId || !convId || !projectKey) return;
     const chat = useChatStore.getState();
 
-    // checkpoint 기반 부모 컨텍스트를 한번만 캡처 (패널 열 때)
-    parentContext.current = getCheckpointContext(convId, checkpointId);
+    // checkpoint 기반 부모 컨텍스트를 캡처 (패널 열 때)
+    setParentContext(getCheckpointContext(convId, checkpointId));
 
     if (!chat.conversations[branchChannel]) {
+      // Snapshot parent's settings so the branch starts with the same config
+      const parent = chat.conversations[convId];
       chat.addConversation({
         id: branchChannel,
         projectKey,
         label: label || branchId,
         type: 'branch',
         parentId: convId,
-        engine: undefined,
+        engine: parent?.engine,
+        model: parent?.model,
+        persona: parent?.persona,
+        triggerMode: parent?.triggerMode,
         createdAt: Date.now(),
       });
     }
 
     chat.setActiveBranch(branchId, label || branchId);
 
-    // Request history only if no messages yet (avoid overwriting broadcast messages)
+    // 로컬에 메시지가 없을 때만 서버에 히스토리 요청
     if (!chat.messages[branchChannel]?.length) {
       wsClient.sendRpc('conversation.history', {
         conversation_id: convId,
@@ -120,12 +125,20 @@ export function BranchPanel() {
   }, [branchChannel, branchId, convId, projectKey, checkpointId]);
 
   // 부모 컨텍스트 + 브랜치 메시지 합산
-  const messages = [...parentContext.current, ...branchMessages];
+  const messages = [...parentContext, ...branchMessages];
 
   // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Auto-close when switching to a different session
+  const activeConvId = useChatStore(s => s.activeConversationId);
+  useEffect(() => {
+    if (activeConvId && convId && activeConvId !== convId) {
+      closeBranchPanel();
+    }
+  }, [activeConvId, convId, closeBranchPanel]);
 
   // Listen for branch deletion
   useEffect(() => {
@@ -175,12 +188,12 @@ export function BranchPanel() {
         ) : (
           <>
             {/* Parent context messages (dimmed) */}
-            {parentContext.current.length > 0 && (
+            {parentContext.length > 0 && (
               <div className="opacity-50">
-                {parentContext.current.map((msg, i) => {
-                  const prev = i > 0 ? parentContext.current[i - 1] : null;
+                {parentContext.map((msg, i) => {
+                  const prev = i > 0 ? parentContext[i - 1] : null;
                   const roleSwitch = prev !== null && prev.role !== msg.role;
-                  return <MessageView key={msg.id} msg={msg} isGrouped={false} isRoleSwitch={roleSwitch} />;
+                  return <MessageView key={msg.id} msg={msg} isGrouped={false} isRoleSwitch={roleSwitch} conversationId={branchChannel ?? undefined} />;
                 })}
                 <div className="flex items-center gap-2 px-4 py-2 my-1">
                   <div className="flex-1 border-t border-violet-400/20" />
@@ -191,11 +204,11 @@ export function BranchPanel() {
             )}
             {/* Branch messages */}
             {branchMessages.map((msg, i) => {
-              const offset = parentContext.current.length;
+              const offset = parentContext.length;
               const globalIdx = offset + i;
               const prev = globalIdx > 0 ? messages[globalIdx - 1] : null;
               const roleSwitch = prev !== null && prev.role !== msg.role;
-              return <MessageView key={msg.id} msg={msg} isGrouped={isGrouped(globalIdx)} isRoleSwitch={roleSwitch} />;
+              return <MessageView key={msg.id} msg={msg} isGrouped={isGrouped(globalIdx)} isRoleSwitch={roleSwitch} conversationId={branchChannel ?? undefined} />;
             })}
           </>
         )}
@@ -204,7 +217,7 @@ export function BranchPanel() {
 
       {/* Input — scoped to branch channel */}
       <div className="shrink-0">
-        <InputArea overrideConversationId={branchChannel ?? undefined} />
+        <InputArea overrideConversationId={branchChannel ?? undefined} compact />
       </div>
     </div>
   );

@@ -88,7 +88,7 @@ const ADOPT_SUMMARY_PREFIX = '<!-- branch-adopt-summary -->';
 function BranchAdoptCard({ content }: { content: string }) {
   const body = content.replace(ADOPT_SUMMARY_PREFIX, '').trim();
   return (
-    <div className="max-w-4xl mx-auto w-full px-4 py-2">
+    <div className="w-full px-4 py-2">
       <div className="border-l-2 border-violet-400 bg-violet-500/5 rounded-r-lg px-4 py-3 text-[13px]">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
@@ -113,13 +113,14 @@ const proseClasses =
   'prose-p:my-1.5 prose-p:text-[1em] ' +
   // 헤딩: 크기 동일(1em), bold만 구분
   'prose-headings:text-[1em] prose-headings:font-bold prose-headings:text-on-surface prose-headings:mt-4 prose-headings:mb-2 ' +
-  'prose-pre:rounded-lg prose-pre:my-3 prose-pre:!bg-[#010101] ' +
+  'prose-pre:rounded-lg prose-pre:my-2 prose-pre:!bg-[#010101] ' +
   'prose-code:text-[13px] prose-code:before:content-none prose-code:after:content-none ' +
   'prose-strong:text-on-surface prose-li:my-0.5 prose-li:text-[1em] prose-ol:my-1.5 prose-ul:my-1.5 ' +
   'prose-blockquote:border-primary/20 prose-blockquote:text-on-surface-variant prose-blockquote:not-italic prose-blockquote:text-[1em] ' +
-  'prose-th:text-[1em] prose-th:font-semibold prose-td:text-[1em] prose-td:font-normal';
+  'prose-th:text-[1em] prose-th:font-semibold prose-th:font-[inherit] prose-th:leading-normal prose-th:px-4 prose-th:py-2 ' +
+  'prose-td:text-[1em] prose-td:font-normal prose-td:font-[inherit] prose-td:leading-normal prose-td:px-4 prose-td:py-1.5';
 
-export function MessageView({ msg, isGrouped, isRoleSwitch = false }: { msg: ChatMessage; isGrouped: boolean; isRoleSwitch?: boolean }) {
+export function MessageView({ msg, isGrouped, isRoleSwitch = false, conversationId }: { msg: ChatMessage; isGrouped: boolean; isRoleSwitch?: boolean; conversationId?: string }) {
   // Branch adopt summary card — special rendering
   if (msg.content.startsWith(ADOPT_SUMMARY_PREFIX)) {
     return <BranchAdoptCard content={msg.content} />;
@@ -131,29 +132,30 @@ export function MessageView({ msg, isGrouped, isRoleSwitch = false }: { msg: Cha
   const isEditing = useChatStore(s => s.editingMsgId === msg.id);
   const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  // Get current engine for AI colors and name
+  // Get engine/model from conversation settings (prop > active), fallback to projectContext
   const activeConvId = useChatStore(s => s.activeConversationId);
-  const conv = useChatStore(s => activeConvId ? s.conversations[activeConvId] : null);
+  const resolvedConvId = conversationId ?? activeConvId;
+  const conv = useChatStore(s => resolvedConvId ? s.conversations[resolvedConvId] : null);
   const ctx = useContextStore(s => s.projectContext);
 
   const rawEngine = conv?.engine || ctx?.engine || 'claude';
   const engine = rawEngine.toLowerCase();
-  const model = ctx?.model || conv?.model;
+  const model = conv?.model || ctx?.model;
   const project = ctx?.project || conv?.projectKey;
   const resumeToken = ctx?.resumeToken;
   const shortToken = resumeToken ? resumeToken.slice(0, 8) : null;
 
-  let AiIcon = <Robot size={16} weight="fill" className="text-on-surface-variant" />;
+  let AiIcon = <Robot size={18} weight="fill" className="text-on-surface-variant w-full h-full" />;
   if (engine.includes('claude')) {
-    AiIcon = <img src="/_resource/claude.png" alt="Claude" className="w-[16px] h-[16px] object-contain rounded-sm shadow-sm" />;
+    AiIcon = <img src="/_resource/claude.png" alt="Claude" className="w-full h-full object-contain rounded-sm shadow-sm" />;
   } else if (engine.includes('gpt') || engine.includes('openai')) {
-    AiIcon = <img src="/_resource/gpt.png" alt="GPT" className="w-[16px] h-[16px] object-contain rounded-sm shadow-sm" />;
+    AiIcon = <img src="/_resource/gpt.png" alt="GPT" className="w-full h-full object-contain rounded-sm shadow-sm" />;
   } else if (engine.includes('gemini')) {
-    AiIcon = <img src="/_resource/gemini.png" alt="Gemini" className="w-[16px] h-[16px] object-contain rounded-sm shadow-sm" />;
+    AiIcon = <img src="/_resource/gemini.png" alt="Gemini" className="w-full h-full object-contain rounded-sm shadow-sm" />;
   }
 
   const UserIcon = (
-    <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" className="shadow-sm rounded-full">
+    <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" className="w-full h-full shadow-sm rounded-full">
       <circle cx="8" cy="8" r="8" fill="#5e6ad2" />
       <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">U</text>
     </svg>
@@ -174,7 +176,7 @@ export function MessageView({ msg, isGrouped, isRoleSwitch = false }: { msg: Cha
           <div className="msg-row__header flex items-center">
             {isUser ? (
               <>
-                <div className="flex items-center justify-center mr-1">
+                <div className="w-5 h-5 shrink-0 flex items-center justify-center mr-1.5">
                   {UserIcon}
                 </div>
                 <span className="msg-row__name tracking-wide mt-0.5">YOU</span>
@@ -182,7 +184,7 @@ export function MessageView({ msg, isGrouped, isRoleSwitch = false }: { msg: Cha
               </>
             ) : (
               <>
-                <div className="flex items-center justify-center mr-1">
+                <div className="w-5 h-5 shrink-0 flex items-center justify-center mr-1.5">
                   {AiIcon}
                 </div>
                 <span className="msg-row__name tracking-wide uppercase mt-0.5">{engine}</span>
