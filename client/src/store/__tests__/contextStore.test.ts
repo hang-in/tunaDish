@@ -256,6 +256,120 @@ describe('setProgress', () => {
 // clear
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// setProjectConvBranches
+// ---------------------------------------------------------------------------
+
+describe('setProjectConvBranches', () => {
+  it('stores branches for a project key', () => {
+    const branches = [makeConvBranch({ id: 'cb-1' }), makeConvBranch({ id: 'cb-2' })];
+    store.getState().setProjectConvBranches('proj-a', branches);
+    expect(store.getState().convBranchesByProject['proj-a']).toEqual(branches);
+  });
+
+  it('updates convBranches when project matches active projectContext', () => {
+    store.getState().setProjectContext(makeProjectContext({ project: 'tunadish' }));
+    const branches = [makeConvBranch({ id: 'new-cb' })];
+    store.getState().setProjectConvBranches('tunadish', branches);
+    expect(store.getState().convBranches).toEqual(branches);
+  });
+
+  it('does not update convBranches for a different project', () => {
+    store.getState().setProjectContext(makeProjectContext({ project: 'tunadish', convBranches: [makeConvBranch({ id: 'orig' })] }));
+    store.getState().setProjectConvBranches('other-proj', [makeConvBranch({ id: 'x' })]);
+    expect(store.getState().convBranches.map(b => b.id)).toContain('orig');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// removeConvBranch
+// ---------------------------------------------------------------------------
+
+describe('removeConvBranch', () => {
+  it('removes a branch from convBranches', () => {
+    store.setState({ convBranches: [makeConvBranch({ id: 'del' }), makeConvBranch({ id: 'keep' })] });
+    store.getState().removeConvBranch('del');
+    expect(store.getState().convBranches.map(b => b.id)).toEqual(['keep']);
+  });
+
+  it('removes from convBranchesByProject too', () => {
+    store.setState({
+      convBranches: [makeConvBranch({ id: 'x' })],
+      convBranchesByProject: { 'proj-a': [makeConvBranch({ id: 'x' }), makeConvBranch({ id: 'y' })] },
+    });
+    store.getState().removeConvBranch('x');
+    expect(store.getState().convBranchesByProject['proj-a'].map(b => b.id)).toEqual(['y']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// removeMemoryEntry
+// ---------------------------------------------------------------------------
+
+describe('removeMemoryEntry', () => {
+  it('removes an entry by id', () => {
+    store.setState({ memoryEntries: [makeMemoryEntry({ id: 'a' }), makeMemoryEntry({ id: 'b' })] });
+    store.getState().removeMemoryEntry('a');
+    expect(store.getState().memoryEntries.map(e => e.id)).toEqual(['b']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setCodeSearchResults / setCodeMap / setCodeSearchLoading
+// ---------------------------------------------------------------------------
+
+describe('code search state', () => {
+  it('setCodeSearchResults stores results and clears loading', () => {
+    store.setState({ codeSearchLoading: true });
+    const results = { query: 'test', results: [], totalTokens: 0 };
+    store.getState().setCodeSearchResults(results);
+    expect(store.getState().codeSearchResults).toEqual(results);
+    expect(store.getState().codeSearchLoading).toBe(false);
+  });
+
+  it('setCodeMap stores the map', () => {
+    const map = { symbols: [], totalFiles: 0 };
+    store.getState().setCodeMap(map);
+    expect(store.getState().codeMap).toEqual(map);
+  });
+
+  it('setCodeSearchLoading toggles loading state', () => {
+    store.getState().setCodeSearchLoading(true);
+    expect(store.getState().codeSearchLoading).toBe(true);
+    store.getState().setCodeSearchLoading(false);
+    expect(store.getState().codeSearchLoading).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setEngineList
+// ---------------------------------------------------------------------------
+
+describe('setEngineList', () => {
+  it('stores engine/model map', () => {
+    const engines = { claude: ['sonnet', 'opus'], gemini: ['pro'] };
+    store.getState().setEngineList(engines);
+    expect(store.getState().engineList).toEqual(engines);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setLastRpcResult
+// ---------------------------------------------------------------------------
+
+describe('setLastRpcResult', () => {
+  it('stores and clears RPC result', () => {
+    store.getState().setLastRpcResult({ method: 'test', data: { ok: true } });
+    expect(store.getState().lastRpcResult).toEqual({ method: 'test', data: { ok: true } });
+    store.getState().setLastRpcResult(null);
+    expect(store.getState().lastRpcResult).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// clear
+// ---------------------------------------------------------------------------
+
 describe('clear', () => {
   it('resets all data fields to their defaults', () => {
     store.setState({

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatStore } from '@/store/chatStore';
 import { wsClient } from '@/lib/wsClient';
+import * as dbSync from '@/lib/dbSync';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import {
@@ -18,10 +19,11 @@ import {
 import { showToast } from './ActionToast';
 
 // --- Message Actions (hover action bar) ---
-export function MessageActions({ role, messageId, content }: { role: 'user' | 'assistant'; messageId: string; content: string }) {
+export function MessageActions({ role, messageId, content, conversationId }: { role: 'user' | 'assistant'; messageId: string; content: string; conversationId?: string }) {
   const isAssistant = role === 'assistant';
   const isUser = role === 'user';
-  const activeConvId = useChatStore(s => s.activeConversationId);
+  const storeConvId = useChatStore(s => s.activeConversationId);
+  const activeConvId = conversationId ?? storeConvId;
   const conversations = useChatStore(s => s.conversations);
   const activeBranchId = useChatStore(s => s.activeBranchId);
   const setReplyTo = useChatStore(s => s.setReplyTo);
@@ -75,6 +77,7 @@ export function MessageActions({ role, messageId, content }: { role: 'user' | 'a
     if (!activeConvId) return;
     removeMessage(activeConvId, messageId);
     wsClient.sendRpc('message.delete', { conversation_id: resolvedConvId ?? activeConvId, message_id: messageId });
+    dbSync.syncMessageDelete(activeConvId, messageId);
     setMoreOpen(false);
   };
 
@@ -135,6 +138,126 @@ export function MessageActions({ role, messageId, content }: { role: 'user' | 'a
           </button>
         </PopoverContent>
       </Popover>
+    </div>
+  );
+}
+
+// --- Mobile Context Menu (long-press) ---
+export function MobileContextMenu({ open, onClose, role, messageId, content, conversationId }: {
+  open: boolean;
+  onClose: () => void;
+  role: 'user' | 'assistant';
+  messageId: string;
+  content: string;
+  conversationId?: string;
+}) {
+  const isAssistant = role === 'assistant';
+  const isUser = role === 'user';
+  const storeConvId = useChatStore(s => s.activeConversationId);
+  const activeConvId = conversationId ?? storeConvId;
+  const conversations = useChatStore(s => s.conversations);
+  const activeBranchId = useChatStore(s => s.activeBranchId);
+  const setReplyTo = useChatStore(s => s.setReplyTo);
+  const setEditingMsg = useChatStore(s => s.setEditingMsg);
+  const removeMessage = useChatStore(s => s.removeMessage);
+
+  const resolvedConvId = activeConvId?.startsWith('branch:')
+    ? conversations[activeConvId]?.parentId ?? activeConvId
+    : activeConvId;
+
+  if (!open) return null;
+
+  const handleAction = (fn: () => void) => {
+    fn();
+    onClose();
+  };
+
+  const menuItemClass = 'w-full flex items-center gap-3 px-4 min-h-[44px] text-[13px] text-on-surface-variant active:bg-white/5 transition-colors';
+
+  return (
+    <div className="fixed inset-0 z-[70]" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div
+        className="absolute bottom-0 left-0 right-0 bg-[#1a1a1a] rounded-t-2xl py-2 animate-in slide-in-from-bottom duration-200"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex justify-center py-1 mb-1">
+          <div className="w-8 h-1 rounded-full bg-[#e5e2e1]/20" />
+        </div>
+
+        <button onClick={() => handleAction(() => {
+          const snippet = content.length > 120 ? content.slice(0, 120) + '...' : content;
+          setReplyTo(messageId, snippet);
+        })} className={menuItemClass}>
+          <ArrowBendUpLeft size={18} /> 답장
+        </button>
+
+        <button onClick={() => handleAction(() => {
+          navigator.clipboard.writeText(content);
+          showToast('Copied');
+        })} className={menuItemClass}>
+          <Copy size={18} /> 복사
+        </button>
+
+        <button onClick={() => handleAction(() => {
+          const plain = content.replace(/[*_~`#>\[\]()!]/g, '').replace(/\n{3,}/g, '\n\n');
+          navigator.clipboard.writeText(plain);
+          showToast('Copied as text');
+        })} className={menuItemClass}>
+          <TextT size={18} /> 텍스트로 복사
+        </button>
+
+        <button onClick={() => handleAction(() => {
+          if (!resolvedConvId) return;
+          wsClient.sendRpc('branch.create', { conversation_id: resolvedConvId, checkpoint_id: messageId });
+        })} className={menuItemClass}>
+          <GitFork size={18} /> 브랜치 생성
+        </button>
+
+        <button onClick={() => handleAction(() => {
+          if (!resolvedConvId) return;
+          wsClient.sendRpc('message.save', { conversation_id: resolvedConvId, message_id: messageId, content });
+          showToast('Saved to memory');
+        })} className={menuItemClass}>
+          <BookmarkSimple size={18} /> 메모리에 저장
+        </button>
+
+        {isAssistant && (
+          <button onClick={() => handleAction(() => {
+            if (!resolvedConvId) return;
+            wsClient.sendRpc('message.retry', { conversation_id: resolvedConvId, message_id: messageId });
+          })} className={menuItemClass}>
+            <ArrowClockwise size={18} /> 다시 생성
+          </button>
+        )}
+
+        {isAssistant && !!activeBranchId && (
+          <button onClick={() => handleAction(() => {
+            if (!resolvedConvId) return;
+            wsClient.sendRpc('message.adopt', { conversation_id: resolvedConvId, message_id: messageId });
+            showToast('Adopted');
+          })} className={menuItemClass}>
+            <CheckCircle size={18} /> 채택
+          </button>
+        )}
+
+        {isUser && (
+          <button onClick={() => handleAction(() => setEditingMsg(messageId))} className={menuItemClass}>
+            <PencilSimple size={18} /> 편집
+          </button>
+        )}
+
+        <div className="my-1 mx-4 border-t border-white/5" />
+
+        <button onClick={() => handleAction(() => {
+          if (!activeConvId) return;
+          removeMessage(activeConvId, messageId);
+          wsClient.sendRpc('message.delete', { conversation_id: resolvedConvId ?? activeConvId, message_id: messageId });
+          dbSync.syncMessageDelete(activeConvId, messageId);
+        })} className={cn(menuItemClass, 'text-red-400/80')}>
+          <Trash size={18} /> 삭제
+        </button>
+      </div>
     </div>
   );
 }

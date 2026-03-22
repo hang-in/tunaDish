@@ -251,7 +251,8 @@ function ProjectRow({ node, open, toggle }: { node: SidebarNode; open: boolean; 
         wsClient.sendRpc('branch.list.json', { project: node.projectKey });
       }
     }
-    toggle();
+    // 비활성 프로젝트 클릭 시 자동 펼침 (이미 열려있으면 유지)
+    if (!open) toggle();
   };
 
   const handleNewSession = (e: React.MouseEvent) => {
@@ -269,7 +270,9 @@ function ProjectRow({ node, open, toggle }: { node: SidebarNode; open: boolean; 
       )}
       onClick={handleClick}
     >
-      <Arrow open={open} />
+      <span className="shrink-0 p-0.5 rounded hover:bg-white/10 transition-colors" onClick={e => { e.stopPropagation(); toggle(); }}>
+        <Arrow open={open} />
+      </span>
       <Folder size={14} weight={isActive ? 'fill' : 'regular'} className={isActive ? 'text-primary shrink-0' : 'text-on-surface-variant/60 shrink-0'} />
       <span className={cn('text-[12px] truncate flex-1', isActive ? 'text-on-surface font-medium' : 'text-on-surface-variant/70')}>
         {node.name}
@@ -307,7 +310,8 @@ function SessionRow({ node, open, toggle, hasChildren }: {
 
   const handleClick = () => {
     setActive(conv.id);
-    if (hasChildren) toggle();
+    // 선택 시 접혀있으면 자동 펼침 (이미 열려있으면 유지)
+    if (hasChildren && !open) toggle();
   };
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -324,7 +328,7 @@ function SessionRow({ node, open, toggle, hasChildren }: {
       )}
       onClick={handleClick}
     >
-      {hasChildren && <span className="shrink-0 mr-0.5"><Arrow open={open} /></span>}
+      {hasChildren && <span className="shrink-0 mr-0.5 p-0.5 rounded hover:bg-white/10 transition-colors" onClick={e => { e.stopPropagation(); toggle(); }}><Arrow open={open} /></span>}
       <span className="shrink-0 self-center w-[18px] flex items-center justify-center mr-1">
         <TransportIcon source={conv.source} active={isActive} />
       </span>
@@ -365,23 +369,27 @@ function ConvBranchRow({ node }: { node: SidebarNode }) {
   const handleClick = () => {
     if (confirmDelete) return;
     const state = useChatStore.getState();
-    const activeId = state.activeConversationId;
-    let convId: string | null = null;
-    // 현재 활성 대화가 일반 세션이면 그대로 사용
-    if (activeId && !activeId.startsWith('branch:')) convId = activeId;
-    // branch: 채널이면 parentId에서 원본 세션 찾기
-    else if (activeId) convId = state.conversations[activeId]?.parentId ?? null;
-    // 둘 다 실패하면 브랜치의 rtSessionId 사용
-    convId = convId ?? branch.rtSessionId ?? null;
+    // 브랜치의 부모 세션 ID를 최우선으로 사용
+    let convId: string | null = branch.rtSessionId ?? null;
+    // rtSessionId가 없으면 현재 활성 대화에서 추론
+    if (!convId) {
+      const activeId = state.activeConversationId;
+      if (activeId && !activeId.startsWith('branch:')) convId = activeId;
+      else if (activeId) convId = state.conversations[activeId]?.parentId ?? null;
+    }
     if (!convId) {
       console.warn('[ConvBranchRow] convId 추론 실패:', {
         branchId: branch.id, label: branch.label, rtSessionId: branch.rtSessionId,
-        activeId, projectKey: node.projectKey,
+        activeConvId: state.activeConversationId, projectKey: node.projectKey,
       });
       return;
     }
     if (convId && node.projectKey) {
       console.log('[ConvBranchRow] openBranchPanel:', { branchId: branch.id, convId, checkpointId: branch.checkpointId });
+      // 부모 대화가 현재 활성 대화가 아니면 전환
+      if (state.activeConversationId !== convId) {
+        state.setActiveConversation(convId);
+      }
       openBranchPanel(branch.id, convId, branch.label, node.projectKey, branch.checkpointId);
     }
   };

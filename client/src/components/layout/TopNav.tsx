@@ -1,5 +1,8 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSystemStore } from '@/store/systemStore';
+import { Input } from '@/components/ui/input';
+import { MessageSearchResults } from './MessageSearchResults';
 import {
   ClockCounterClockwise,
   Bell,
@@ -7,6 +10,7 @@ import {
   CornersOut,
   CornersIn,
   X,
+  MagnifyingGlass,
 } from '@phosphor-icons/react';
 
 const appWindow = getCurrentWindow();
@@ -48,6 +52,66 @@ function WindowControls() {
   );
 }
 
+function HeaderSearch() {
+  const [search, setSearch] = useState('');
+  const [focused, setFocused] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isDbConnected = useSystemStore(s => s.isDbConnected);
+
+  // 외부 클릭 시 드롭다운 닫기
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setFocused(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Escape 키로 닫기
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setSearch('');
+      setFocused(false);
+      (e.target as HTMLInputElement).blur();
+    }
+  };
+
+  const showDropdown = search.trim().length >= 2 && focused && isDbConnected;
+
+  return (
+    <div ref={containerRef} className="relative w-full max-w-[360px]">
+      <MagnifyingGlass size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant/30 z-10" />
+      <Input
+        type="text"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onKeyDown={handleKeyDown}
+        placeholder="메시지 검색..."
+        className="h-7 bg-white/5 border-none text-[11px] pl-7 pr-7 text-on-surface placeholder:text-on-surface-variant/30 focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:border-none rounded-md"
+      />
+      {search && (
+        <button
+          type="button"
+          onClick={() => { setSearch(''); setFocused(false); }}
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant/30 hover:text-on-surface-variant/60 transition-colors z-10"
+        >
+          <X size={12} />
+        </button>
+      )}
+
+      {showDropdown && (
+        <MessageSearchResults
+          query={search}
+          onSelect={() => { setSearch(''); setFocused(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
 export function TopNav() {
   // 헤더 빈 영역 mousedown → 창 드래그 시작
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLElement>) => {
@@ -80,8 +144,10 @@ export function TopNav() {
         </button>
       </div>
 
-      {/* Center flex spacer */}
-      <div className="flex-1" />
+      {/* Center — Search */}
+      <div className="flex-1 flex items-center justify-center px-4">
+        <HeaderSearch />
+      </div>
 
       {/* Right items */}
       <div className="flex items-center gap-1 pr-0 h-full">

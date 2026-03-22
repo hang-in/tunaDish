@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Test & coverage
+coverage/
+test-results/
+playwright-report/
+
+# Tauri generated
+src-tauri/gen/android/

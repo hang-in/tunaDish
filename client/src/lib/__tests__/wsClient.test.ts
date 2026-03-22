@@ -162,7 +162,8 @@ describe('message.new notification', () => {
     expect(msgs).toHaveLength(1);
     expect(msgs[0].id).toBe('msg-a');
     expect(msgs[0].content).toBe('Hello from assistant');
-    expect(msgs[0].status).toBe('streaming');
+    // activeRun이 없으면 즉시 finalize되어 'done'이 됨
+    expect(msgs[0].status).toBe('done');
   });
 });
 
@@ -353,6 +354,225 @@ describe('conversation.created notification', () => {
     expect(conv.projectKey).toBe('proj-x');
     expect(conv.label).toBe('new-session');
     expect(conv.type).toBe('main');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// project.list.result
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// message.delete
+// ---------------------------------------------------------------------------
+
+describe('message.delete notification', () => {
+  it('removes the message from the store', () => {
+    useChatStore.getState().pushMessage('conv-1', {
+      id: 'msg-del', role: 'user', content: 'to delete', timestamp: 1, status: 'done',
+    });
+    notify('message.delete', {
+      ref: { channel_id: 'conv-1', message_id: 'msg-del' },
+    });
+    expect(useChatStore.getState().messages['conv-1']).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// run.status with branch_id
+// ---------------------------------------------------------------------------
+
+describe('run.status with branch_id', () => {
+  it('sets run status for both conv and branch channel', () => {
+    notify('run.status', {
+      conversation_id: 'conv-1',
+      branch_id: 'br-1',
+      status: 'running',
+    });
+    expect(useRunStore.getState().activeRuns['conv-1']).toBe('running');
+    expect(useRunStore.getState().activeRuns['branch:br-1']).toBe('running');
+  });
+
+  it('finalizes both channels on idle', () => {
+    useChatStore.getState().addMessage(
+      { channel_id: 'conv-1', message_id: 'ms1' },
+      { text: 'streaming' },
+    );
+    useChatStore.getState().addMessage(
+      { channel_id: 'branch:br-1', message_id: 'ms2' },
+      { text: 'streaming' },
+    );
+    // Set running first so message.new doesn't auto-finalize
+    useRunStore.setState({ activeRuns: { 'conv-1': 'running', 'branch:br-1': 'running' } });
+
+    notify('run.status', {
+      conversation_id: 'conv-1',
+      branch_id: 'br-1',
+      status: 'idle',
+    });
+    expect(useChatStore.getState().messages['conv-1'][0].status).toBe('done');
+    expect(useChatStore.getState().messages['branch:br-1'][0].status).toBe('done');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// conversation.deleted
+// ---------------------------------------------------------------------------
+
+describe('conversation.deleted notification', () => {
+  it('removes the conversation from the store', () => {
+    useChatStore.getState().addConversation({
+      id: 'conv-rm', projectKey: 'proj-a', label: 'bye', type: 'main', createdAt: 0,
+    });
+    notify('conversation.deleted', { conversation_id: 'conv-rm' });
+    expect(useChatStore.getState().conversations['conv-rm']).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// conversation.history.result
+// ---------------------------------------------------------------------------
+
+describe('conversation.history.result notification', () => {
+  it('sets message history for the conversation', () => {
+    notify('conversation.history.result', {
+      conversation_id: 'conv-h',
+      messages: [
+        { role: 'user', content: 'hello', timestamp: '2026-03-22T00:00:00Z' },
+        { role: 'assistant', content: 'world', timestamp: '2026-03-22T00:00:01Z' },
+      ],
+    });
+    const msgs = useChatStore.getState().messages['conv-h'];
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0].role).toBe('user');
+    expect(msgs[1].content).toBe('world');
+    expect(msgs[0].status).toBe('done');
+  });
+
+  it('uses branch:${branch_id} key for branch history', () => {
+    notify('conversation.history.result', {
+      conversation_id: 'conv-h',
+      branch_id: 'br-5',
+      messages: [
+        { role: 'assistant', content: 'branch msg', timestamp: '2026-03-22T00:00:00Z' },
+      ],
+    });
+    expect(useChatStore.getState().messages['branch:br-5']).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// conversation.list.result
+// ---------------------------------------------------------------------------
+
+describe('conversation.list.result notification', () => {
+  it('loads conversations into the store', () => {
+    notify('conversation.list.result', {
+      conversations: [
+        { id: 'c1', project: 'proj-a', label: 'Chat 1', created_at: 1000 },
+        { id: 'c2', project: 'proj-a', label: 'Chat 2', created_at: 2000 },
+      ],
+    });
+    expect(useChatStore.getState().conversations['c1']).toBeDefined();
+    expect(useChatStore.getState().conversations['c2'].label).toBe('Chat 2');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// command.result
+// ---------------------------------------------------------------------------
+
+describe('command.result notification', () => {
+  it('pushes a system message to the conversation', () => {
+    notify('command.result', {
+      conversation_id: 'conv-cmd',
+      text: 'Model set to claude-3-opus',
+    });
+    const msgs = useChatStore.getState().messages['conv-cmd'];
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].content).toBe('Model set to claude-3-opus');
+    expect(msgs[0].role).toBe('assistant');
+  });
+
+  it('ignores __rpc__ conversation_id', () => {
+    notify('command.result', {
+      conversation_id: '__rpc__',
+      text: 'ignored',
+    });
+    expect(useChatStore.getState().messages['__rpc__']).toBeUndefined();
+  });
+
+  it('applies settings when provided', () => {
+    useChatStore.getState().addConversation({
+      id: 'conv-set', projectKey: 'proj-a', label: 'test', type: 'main', createdAt: 0,
+    });
+    notify('command.result', {
+      conversation_id: 'conv-set',
+      text: 'Engine changed',
+      settings: { engine: 'gemini', model: 'pro' },
+    });
+    const conv = useChatStore.getState().conversations['conv-set'];
+    expect(conv.engine).toBe('gemini');
+    expect(conv.model).toBe('pro');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// engine.list.result
+// ---------------------------------------------------------------------------
+
+describe('engine.list.result notification', () => {
+  it('stores engine list in context store', () => {
+    notify('engine.list.result', {
+      engines: { claude: ['sonnet', 'opus'], gemini: ['pro'] },
+    });
+    const engines = useContextStore.getState().engineList;
+    expect(engines.claude).toEqual(['sonnet', 'opus']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// memory.list.json.result
+// ---------------------------------------------------------------------------
+
+describe('memory.list.json.result notification', () => {
+  it('stores memory entries in context store', () => {
+    notify('memory.list.json.result', {
+      entries: [
+        { id: 'm1', type: 'decision', title: 'Use React', content: 'ok', source: 'chat', tags: [], timestamp: 1 },
+      ],
+    });
+    expect(useContextStore.getState().memoryEntries).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// message.deleted (separate from message.delete via ref)
+// ---------------------------------------------------------------------------
+
+describe('message.deleted notification', () => {
+  it('removes the message from store', () => {
+    useChatStore.getState().pushMessage('conv-1', {
+      id: 'msg-gone', role: 'assistant', content: 'bye', timestamp: 1, status: 'done',
+    });
+    notify('message.deleted', { conversation_id: 'conv-1', message_id: 'msg-gone' });
+    expect(useChatStore.getState().messages['conv-1']).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// branch.switched
+// ---------------------------------------------------------------------------
+
+describe('branch.switched notification', () => {
+  it('sets the active branch', () => {
+    notify('branch.switched', { branch_id: 'br-99' });
+    expect(useChatStore.getState().activeBranchId).toBe('br-99');
+  });
+
+  it('clears active branch when branch_id is null', () => {
+    useChatStore.setState({ activeBranchId: 'br-99' });
+    notify('branch.switched', { branch_id: null });
+    expect(useChatStore.getState().activeBranchId).toBeNull();
   });
 });
 

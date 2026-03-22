@@ -319,6 +319,202 @@ describe('setActiveBranch', () => {
 // setProjectsFromResult
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// setProjects
+// ---------------------------------------------------------------------------
+
+describe('setProjects', () => {
+  it('replaces the projects array', () => {
+    store.getState().setProjects([{ key: 'a', name: 'A', source: 'configured', type: 'project' }]);
+    expect(store.getState().projects).toHaveLength(1);
+    expect(store.getState().projects[0].key).toBe('a');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setActiveProject
+// ---------------------------------------------------------------------------
+
+describe('setActiveProject', () => {
+  it('sets activeProjectKey', () => {
+    store.getState().setActiveProject('proj-z');
+    expect(store.getState().activeProjectKey).toBe('proj-z');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createConversation
+// ---------------------------------------------------------------------------
+
+describe('createConversation', () => {
+  it('creates a new conversation and sets it as active', () => {
+    const id = store.getState().createConversation('proj-a');
+    expect(store.getState().conversations[id]).toBeDefined();
+    expect(store.getState().activeConversationId).toBe(id);
+    expect(store.getState().activeProjectKey).toBe('proj-a');
+  });
+
+  it('uses project defaultEngine for conversation engine', () => {
+    store.getState().setProjects([{ key: 'proj-e', name: 'E', source: 'configured', type: 'project', defaultEngine: 'claude' }]);
+    const id = store.getState().createConversation('proj-e');
+    expect(store.getState().conversations[id].engine).toBe('claude');
+  });
+
+  it('uses custom label when provided', () => {
+    const id = store.getState().createConversation('proj-a', 'main', 'My Chat');
+    expect(store.getState().conversations[id].label).toBe('My Chat');
+  });
+
+  it('defaults label to "main" for main type', () => {
+    const id = store.getState().createConversation('proj-a', 'main');
+    expect(store.getState().conversations[id].label).toBe('main');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setHistory
+// ---------------------------------------------------------------------------
+
+describe('setHistory', () => {
+  it('replaces messages for a conversation', () => {
+    store.getState().pushMessage('conv-1', makeMsg({ id: 'old' }));
+    const newMsgs = [makeMsg({ id: 'new-1' }), makeMsg({ id: 'new-2' })];
+    store.getState().setHistory('conv-1', newMsgs);
+    expect(store.getState().messages['conv-1']).toHaveLength(2);
+    expect(store.getState().messages['conv-1'][0].id).toBe('new-1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deleteMessage (via ref)
+// ---------------------------------------------------------------------------
+
+describe('deleteMessage', () => {
+  it('removes message by ref', () => {
+    store.getState().pushMessage('conv-1', makeMsg({ id: 'del-1' }));
+    store.getState().pushMessage('conv-1', makeMsg({ id: 'keep-1' }));
+    store.getState().deleteMessage({ channel_id: 'conv-1', message_id: 'del-1' });
+    const ids = store.getState().messages['conv-1'].map(m => m.id);
+    expect(ids).toEqual(['keep-1']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// editMessage
+// ---------------------------------------------------------------------------
+
+describe('editMessage', () => {
+  it('updates content and clears editingMsgId', () => {
+    store.getState().pushMessage('conv-1', makeMsg({ id: 'edit-1', content: 'before' }));
+    store.getState().setEditingMsg('edit-1');
+    store.getState().editMessage('conv-1', 'edit-1', 'after');
+    expect(store.getState().messages['conv-1'][0].content).toBe('after');
+    expect(store.getState().editingMsgId).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateConvSettings
+// ---------------------------------------------------------------------------
+
+describe('updateConvSettings', () => {
+  it('merges settings into the conversation', () => {
+    store.getState().addConversation(makeConv({ id: 'settings-1' }));
+    store.getState().updateConvSettings('settings-1', { engine: 'gemini', model: 'pro' });
+    const conv = store.getState().conversations['settings-1'];
+    expect(conv.engine).toBe('gemini');
+    expect(conv.model).toBe('pro');
+  });
+
+  it('is a no-op for unknown convId', () => {
+    const before = store.getState().conversations;
+    store.getState().updateConvSettings('ghost', { engine: 'x' });
+    expect(store.getState().conversations).toBe(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setReplyTo / clearReplyTo
+// ---------------------------------------------------------------------------
+
+describe('replyTo', () => {
+  it('sets and clears replyTo', () => {
+    store.getState().setReplyTo('msg-1', 'hello');
+    expect(store.getState().replyTo).toEqual({ msgId: 'msg-1', content: 'hello' });
+    store.getState().clearReplyTo();
+    expect(store.getState().replyTo).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setEditingMsg
+// ---------------------------------------------------------------------------
+
+describe('setEditingMsg', () => {
+  it('sets and clears editingMsgId', () => {
+    store.getState().setEditingMsg('msg-x');
+    expect(store.getState().editingMsgId).toBe('msg-x');
+    store.getState().setEditingMsg(null);
+    expect(store.getState().editingMsgId).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// clearMessages
+// ---------------------------------------------------------------------------
+
+describe('clearMessages', () => {
+  it('removes all messages for a conversation', () => {
+    store.getState().pushMessage('conv-1', makeMsg({ id: 'm1' }));
+    store.getState().pushMessage('conv-1', makeMsg({ id: 'm2' }));
+    store.getState().clearMessages('conv-1');
+    expect(store.getState().messages['conv-1']).toBeUndefined();
+  });
+
+  it('does not affect other conversations', () => {
+    store.getState().pushMessage('conv-1', makeMsg({ id: 'm1' }));
+    store.getState().pushMessage('conv-2', makeMsg({ id: 'm2' }));
+    store.getState().clearMessages('conv-1');
+    expect(store.getState().messages['conv-2']).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setMockMode
+// ---------------------------------------------------------------------------
+
+describe('setMockMode', () => {
+  it('toggles mock mode', () => {
+    store.getState().setMockMode(true);
+    expect(store.getState().isMockMode).toBe(true);
+    store.getState().setMockMode(false);
+    expect(store.getState().isMockMode).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getProjectConversations
+// ---------------------------------------------------------------------------
+
+describe('getProjectConversations', () => {
+  it('returns conversations filtered by projectKey', () => {
+    store.getState().addConversation(makeConv({ id: 'c1', projectKey: 'proj-a' }));
+    store.getState().addConversation(makeConv({ id: 'c2', projectKey: 'proj-b' }));
+    store.getState().addConversation(makeConv({ id: 'c3', projectKey: 'proj-a' }));
+    const result = store.getState().getProjectConversations('proj-a');
+    expect(result).toHaveLength(2);
+    expect(result.map(c => c.id).sort()).toEqual(['c1', 'c3']);
+  });
+
+  it('returns empty array for unknown project', () => {
+    expect(store.getState().getProjectConversations('unknown')).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setProjectsFromResult
+// ---------------------------------------------------------------------------
+
 describe('setProjectsFromResult', () => {
   it('maps configured entries with alias as name', () => {
     store.getState().setProjectsFromResult(

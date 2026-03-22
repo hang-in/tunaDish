@@ -5,6 +5,7 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn open_branch_window(
     app: tauri::AppHandle,
@@ -18,7 +19,7 @@ fn open_branch_window(
 
     // If already open, just focus
     if let Some(existing) = app.get_webview_window(&window_label) {
-        existing.set_focus().map_err(|e| e.to_string())?;
+        existing.set_focus().map_err(|e: tauri::Error| e.to_string())?;
         return Ok(());
     }
 
@@ -38,32 +39,42 @@ fn open_branch_window(
     .center()
     .decorations(false)
     .build()
-    .map_err(|e| e.to_string())?;
+    .map_err(|e: tauri::Error| e.to_string())?;
 
     Ok(())
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn close_branch_window(app: tauri::AppHandle, branch_id: String) -> Result<(), String> {
     let short_id = &branch_id[..branch_id.len().min(8)];
     let window_label = format!("branch-{}", short_id);
     if let Some(window) = app.get_webview_window(&window_label) {
-        window.close().map_err(|e| e.to_string())?;
+        window.close().map_err(|e: tauri::Error| e.to_string())?;
     }
     Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_sql::Builder::new().build());
+
+    #[cfg(desktop)]
+    let builder = builder
         .plugin(tauri_plugin_window_state::Builder::new().build())
-        .plugin(tauri_plugin_sql::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             greet,
             open_branch_window,
             close_branch_window
-        ])
+        ]);
+
+    #[cfg(mobile)]
+    let builder = builder
+        .invoke_handler(tauri::generate_handler![greet]);
+
+    builder
         .setup(|_app| {
             #[cfg(target_os = "linux")]
             {

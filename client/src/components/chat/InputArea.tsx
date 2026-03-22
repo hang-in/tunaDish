@@ -2,8 +2,11 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useChatStore } from '@/store/chatStore';
 import { useRunStore } from '@/store/runStore';
 import { useContextStore } from '@/store/contextStore';
+import { useSystemStore } from '@/store/systemStore';
 import { useConvSettings } from '@/lib/useConvSettings';
+import { useIsMobile } from '@/lib/useIsMobile';
 import { wsClient } from '@/lib/wsClient';
+import * as dbSync from '@/lib/dbSync';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import {
@@ -246,6 +249,7 @@ function QuickChipTrigger({ convId, compact }: { convId: string; compact?: boole
 
 // --- Input Area ---
 export function InputArea({ overrideConversationId, compact }: { overrideConversationId?: string; compact?: boolean } = {}) {
+  const isMobile = useIsMobile();
   const [input, setInput] = useState('');
   const [cmdIndex, setCmdIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -261,8 +265,17 @@ export function InputArea({ overrideConversationId, compact }: { overrideConvers
   });
   const requestCancel = useRunStore(s => s.requestCancel);
   const isRunning = runStatus === 'running' || runStatus === 'cancelling';
+
   const convSettings = useConvSettings(activeConversationId);
-  const placeholderText = `ask to ${convSettings.engine}${convSettings.model ? '/' + convSettings.model : ''}`;
+  const engineName = (() => {
+    const e = (convSettings.engine || 'claude').toLowerCase();
+    if (e.includes('claude')) return '클로드';
+    if (e.includes('gemini')) return '제미나이';
+    if (e.includes('codex')) return '코덱스';
+    if (e.includes('gpt') || e.includes('openai')) return 'GPT';
+    return convSettings.engine || '클로드';
+  })();
+  const placeholderText = `${engineName}에게 무엇이든 물어보세요!`;
 
   // Command palette: show when input starts with "!" and has no newlines
   const cmdMatch = input.match(/^!(\S*)$/);
@@ -278,9 +291,12 @@ export function InputArea({ overrideConversationId, compact }: { overrideConvers
       // defer so input updates first
       setTimeout(() => {
         if (!activeConversationId) return;
+        const msgId = crypto.randomUUID();
+        const ts = Date.now();
         pushMessage(activeConversationId, {
-          id: crypto.randomUUID(), role: 'user', content: cmd.insert, timestamp: Date.now(), status: 'done',
+          id: msgId, role: 'user', content: cmd.insert, timestamp: ts, status: 'done',
         });
+        dbSync.syncMessage({ id: msgId, conversationId: activeConversationId, role: 'user', content: cmd.insert, timestamp: ts, status: 'done' });
         wsClient.sendRpc('chat.send', { conversation_id: activeConversationId, text: cmd.insert });
         setInput('');
       }, 0);
@@ -295,9 +311,12 @@ export function InputArea({ overrideConversationId, compact }: { overrideConvers
     const finalText = replyTo
       ? `> ${replyTo.content.split('\n').join('\n> ')}\n\n${input}`
       : input;
+    const userMsgId = crypto.randomUUID();
+    const userTs = Date.now();
     pushMessage(activeConversationId, {
-      id: crypto.randomUUID(), role: 'user', content: finalText, timestamp: Date.now(), status: 'done',
+      id: userMsgId, role: 'user', content: finalText, timestamp: userTs, status: 'done',
     });
+    dbSync.syncMessage({ id: userMsgId, conversationId: activeConversationId, role: 'user', content: finalText, timestamp: userTs, status: 'done' });
     if (isMockMode) {
       setTimeout(() => {
         pushMessage(activeConversationId, {
@@ -367,17 +386,32 @@ export function InputArea({ overrideConversationId, compact }: { overrideConvers
         {showCmdPalette && (
           <CommandPalette query={cmdQuery} onSelect={handleCmdSelect} selectedIndex={cmdIndex} />
         )}
-        {/* QuickChips */}
+        {/* QuickChips / Mobile Summary Chip */}
         {activeConversationId && (
-          <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-0">
-            <QuickChipEngine convId={activeConversationId} compact={compact} />
-            <QuickChipPersona convId={activeConversationId} compact={compact} />
-            <QuickChipTrigger convId={activeConversationId} compact={compact} />
-          </div>
+          isMobile ? (
+            <button
+              onClick={() => useSystemStore.getState().setMobileSettingsSheetOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-on-surface-variant/60"
+            >
+              <Lightning size={12} className="text-primary" />
+              <span>{convSettings.engine}{convSettings.model ? `/${convSettings.model}` : ''}</span>
+              <span className="text-on-surface-variant/30">&middot;</span>
+              <span>{convSettings.persona || 'default'}</span>
+              <span className="text-on-surface-variant/30">&middot;</span>
+              <span>{convSettings.triggerMode}</span>
+              <CaretDown size={10} className="opacity-40" />
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-0">
+              <QuickChipEngine convId={activeConversationId} compact={compact} />
+              <QuickChipPersona convId={activeConversationId} compact={compact} />
+              <QuickChipTrigger convId={activeConversationId} compact={compact} />
+            </div>
+          )
         )}
 
-        {/* Git Branch + Merge Button (Top Right) — hidden in compact mode */}
-        {!compact && (
+        {/* Git Branch + Merge Button (Top Right) — hidden in compact/mobile mode */}
+        {!compact && !isMobile && (
           <div className="absolute top-2.5 right-3 flex items-center gap-1.5">
             {gitBranch && (
               <span className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono text-on-surface-variant/50 bg-white/5">
@@ -392,6 +426,7 @@ export function InputArea({ overrideConversationId, compact }: { overrideConvers
           </div>
         )}
 
+
         <textarea
           ref={textareaRef}
           value={input}
@@ -400,11 +435,13 @@ export function InputArea({ overrideConversationId, compact }: { overrideConvers
           placeholder={placeholderText}
           rows={1}
           className={cn(
-            'w-full bg-transparent border-none focus:ring-0 text-[14px] px-4 pt-2 pb-[52px] resize-none',
-            'placeholder:text-on-surface-variant/25 placeholder:font-light placeholder:italic text-on-surface',
+            'w-full bg-transparent border-none focus:ring-0 text-[14px] px-4 pt-2 resize-none',
+            'placeholder:text-on-surface-variant/15 placeholder:font-light text-on-surface',
             'focus-visible:outline-none focus:outline-none',
             'disabled:cursor-not-allowed disabled:opacity-50',
-            'min-h-[100px] max-h-[300px]',
+            isMobile
+              ? 'pb-[44px] min-h-[44px] max-h-[120px]'
+              : 'pb-[52px] min-h-[100px] max-h-[300px]',
           )}
         />
         <div className="absolute bottom-3 left-3 flex items-center gap-1">

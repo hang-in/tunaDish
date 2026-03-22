@@ -1,7 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
 import { useChatStore, type ChatMessage } from '@/store/chatStore';
 import { useContextStore } from '@/store/contextStore';
 import {
@@ -10,9 +9,11 @@ import {
   CaretUp,
   Robot,
 } from '@phosphor-icons/react';
-import { MessageActions } from './MessageActions';
+import { MessageActions, MobileContextMenu } from './MessageActions';
 import { InlineEdit } from './MessageActions';
 import { markdownComponents } from './MarkdownComponents';
+import { useIsMobile } from '@/lib/useIsMobile';
+import { useLongPress } from '@/lib/useLongPress';
 
 // --- Progress block (tool loading 표시) ---
 const COLLAPSED_LINES = 5;
@@ -92,8 +93,7 @@ function BranchAdoptCard({ content }: { content: string }) {
       <div className="border-l-2 border-violet-400 bg-violet-500/5 rounded-r-lg px-4 py-3 text-[13px]">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
-          rehypePlugins={[rehypeHighlight]}
-          components={{
+                   components={{
             p: ({ children }) => <p className="my-1 text-on-surface-variant/80">{children}</p>,
             blockquote: ({ children }) => <blockquote className="border-l-2 border-violet-400/30 pl-3 my-2 text-on-surface-variant/60 text-[12px] italic">{children}</blockquote>,
             strong: ({ children }) => <strong className="text-violet-300 font-semibold">{children}</strong>,
@@ -167,10 +167,31 @@ export function MessageView({ msg, isGrouped, isRoleSwitch = false, conversation
   // 완료 후 progressContent가 있으면 축소된 progress + 답변 표시
   const showCollapsedProgress = !isUser && isDone && !!msg.progressContent;
 
+  const isMobile = useIsMobile();
+  const [contextMenuOpen, setContextMenuOpen] = useState(false);
+  const longPressHandlers = useLongPress(
+    useCallback(() => setContextMenuOpen(true), []),
+    { threshold: 500 },
+  );
+
   return (
-    <div className={`msg-row group relative ${isUser ? 'msg-row--user' : ''} ${isGrouped ? 'is-grouped' : ''} ${isRoleSwitch ? 'mt-4' : ''}`}>
-      {/* Hover action bar */}
-      <MessageActions role={msg.role as 'user' | 'assistant'} messageId={msg.id} content={msg.content} />
+    <div
+      className={`msg-row group relative ${isUser ? 'msg-row--user' : ''} ${isGrouped ? 'is-grouped' : ''} ${isRoleSwitch ? 'mt-4' : ''}`}
+      {...(isMobile ? longPressHandlers : {})}
+    >
+      {/* Hover action bar (desktop) / Long-press context menu (mobile) */}
+      {isMobile ? (
+        <MobileContextMenu
+          open={contextMenuOpen}
+          onClose={() => setContextMenuOpen(false)}
+          role={msg.role as 'user' | 'assistant'}
+          messageId={msg.id}
+          content={msg.content}
+          conversationId={conversationId}
+        />
+      ) : (
+        <MessageActions role={msg.role as 'user' | 'assistant'} messageId={msg.id} content={msg.content} conversationId={conversationId} />
+      )}
       {/* Body */}
       <div className="msg-row__body">
         {!isGrouped && (
@@ -217,7 +238,7 @@ export function MessageView({ msg, isGrouped, isRoleSwitch = false, conversation
             <>
               <ProgressBlock content={msg.progressContent!} isDone={true} />
               <div className={proseClasses + ' pt-0.5'}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                   {msg.content}
                 </ReactMarkdown>
               </div>
@@ -230,7 +251,7 @@ export function MessageView({ msg, isGrouped, isRoleSwitch = false, conversation
               <InlineEdit msgId={msg.id} initialContent={msg.content} />
             ) : (
               <div className={proseClasses}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={markdownComponents}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                   {msg.content}
                 </ReactMarkdown>
               </div>

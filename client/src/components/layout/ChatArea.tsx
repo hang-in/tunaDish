@@ -119,19 +119,23 @@ export function ChatArea() {
       });
       contextLoadedConvs.add(activeConversationId);
     }
-    // history는 아직 로드 안 된 경우만
-    if (messagesRaw === undefined) {
-      const histParams: Record<string, string> = { conversation_id: activeConversationId };
-      const conv = useChatStore.getState().conversations[activeConversationId];
-      if (conv?.source && conv.source !== 'tunadish') {
-        histParams.source = conv.source;
-      }
-      wsClient.sendRpc('conversation.history', histParams);
+    // history 요청: 로컬 캐시가 있더라도 서버에서 최신 데이터를 받아옴
+    // (로컬 캐시는 즉시 표시용, 서버 응답이 오면 setHistory로 덮어쓰기)
+    const histParams: Record<string, string> = { conversation_id: activeConversationId };
+    const conv = useChatStore.getState().conversations[activeConversationId];
+    if (conv?.source && conv.source !== 'tunadish') {
+      histParams.source = conv.source;
     }
+    wsClient.sendRpc('conversation.history', histParams);
   }, [activeConversationId, projectKey, isMockMode, isConnected]);
 
+  const prevMsgCountRef = useRef(0);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const prevCount = prevMsgCountRef.current;
+    prevMsgCountRef.current = messages.length;
+    // 초기 로드(0→N) 시 즉시 스크롤, 이후 새 메시지만 smooth
+    const behavior = prevCount === 0 && messages.length > 1 ? 'instant' : 'smooth';
+    messagesEndRef.current?.scrollIntoView({ behavior });
   }, [messages]);
 
   // Mattermost-style grouping: same role within 5 minutes = grouped
@@ -152,7 +156,7 @@ export function ChatArea() {
         {!activeConversationId || messages.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="flex-1 overflow-y-auto pt-4 pb-52 space-y-0 scroll-smooth">
+          <div className="flex-1 overflow-y-auto pt-4 pb-52 space-y-0">
             {messages.map((msg, i) => {
               const prev = i > 0 ? messages[i - 1] : null;
               const roleSwitch = prev !== null && prev.role !== msg.role;

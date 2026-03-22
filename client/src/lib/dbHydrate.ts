@@ -5,6 +5,8 @@
  */
 import { isTauriEnv } from './db';
 import { useChatStore } from '@/store/chatStore';
+import { useSystemStore } from '@/store/systemStore';
+import { useContextStore, type ConversationBranch } from '@/store/contextStore';
 
 export async function hydrateFromDb(): Promise<void> {
   if (!isTauriEnv()) return;
@@ -12,12 +14,27 @@ export async function hydrateFromDb(): Promise<void> {
   try {
     const db = await import('./db');
     await db.initDb();
+    useSystemStore.getState().setDbConnected(true);
 
     const chat = useChatStore.getState();
+
+    // 1. 프로젝트 목록 복원
+    const projects = await db.loadProjects();
+    if (projects.length > 0) {
+      chat.setProjects(projects.map(p => ({
+        key: p.key,
+        name: p.name,
+        path: p.path,
+        defaultEngine: p.defaultEngine,
+        source: p.source as 'configured' | 'discovered',
+        type: (p.type ?? 'project') as 'project' | 'channel',
+      })));
+    }
+
     const activeProjectKey = chat.activeProjectKey;
     if (!activeProjectKey) return;
 
-    // 대화 목록 복원
+    // 2. 대화 목록 복원
     const convs = await db.loadConversations(activeProjectKey);
     if (convs.length > 0) {
       chat.loadConversations(convs.map(c => ({
@@ -29,7 +46,7 @@ export async function hydrateFromDb(): Promise<void> {
       })));
     }
 
-    // 활성 대화의 메시지 복원
+    // 3. 활성 대화의 메시지 복원
     const activeConvId = chat.activeConversationId;
     if (activeConvId) {
       const msgs = await db.loadMessages(activeConvId);
@@ -47,7 +64,25 @@ export async function hydrateFromDb(): Promise<void> {
       }
     }
 
-    console.log('[dbHydrate] loaded', convs.length, 'conversations from SQLite');
+    // 4. 브랜치 목록 복원 (각 대화별)
+    const ctxStore = useContextStore.getState();
+    for (const conv of convs) {
+      const branches = await db.loadBranches(conv.id);
+      if (branches.length > 0) {
+        const mapped: ConversationBranch[] = branches.map(b => ({
+          id: b.id,
+          label: b.label,
+          status: b.status as ConversationBranch['status'],
+          checkpointId: b.checkpointId,
+          rtSessionId: b.sessionId,
+          gitBranch: b.gitBranch,
+          parentBranchId: b.parentBranchId,
+        }));
+        ctxStore.setProjectConvBranches(activeProjectKey, mapped);
+      }
+    }
+
+    console.log('[dbHydrate] loaded', projects.length, 'projects,', convs.length, 'conversations from SQLite');
   } catch (err) {
     console.warn('[dbHydrate] failed, continuing without cache:', err);
   }

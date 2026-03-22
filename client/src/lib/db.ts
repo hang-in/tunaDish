@@ -89,29 +89,33 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
 );
 `;
 
-// FTS 트리거는 IF NOT EXISTS 불가 → 별도 처리
-const FTS_TRIGGERS = `
-CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
-  INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
-END;
-CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
-  INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.rowid, old.content);
-END;
-CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
-  INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.rowid, old.content);
-  INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
-END;
-`;
+// FTS 트리거 — BEGIN...END 안에 ';'가 포함되므로 개별 문자열로 관리
+const FTS_TRIGGERS: string[] = [
+  `CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+     INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+   END`,
+  `CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+     INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+   END`,
+  `CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+     INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+     INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
+   END`,
+];
 
 interface Migration {
   version: number;
+  /** 세미콜론으로 분할 가능한 일반 SQL */
   sql: string;
+  /** BEGIN...END 포함 등 별도 실행이 필요한 문장 */
+  rawStatements?: string[];
 }
 
 const MIGRATIONS: Migration[] = [
   {
     version: 1,
-    sql: SCHEMA_V1 + FTS_TRIGGERS + "INSERT OR IGNORE INTO schema_version (version) VALUES (1);",
+    sql: SCHEMA_V1 + "INSERT OR IGNORE INTO schema_version (version) VALUES (1);",
+    rawStatements: FTS_TRIGGERS,
   },
 ];
 
@@ -149,13 +153,19 @@ async function migrate(d: Database): Promise<void> {
 
   for (const m of MIGRATIONS) {
     if (m.version > currentVersion) {
-      // 각 statement를 개별 실행 (tauri-plugin-sql은 multi-statement를 지원하지 않을 수 있음)
+      // 세미콜론으로 분할 가능한 일반 SQL
       const statements = m.sql
         .split(';')
         .map(s => s.trim())
         .filter(s => s.length > 0);
       for (const stmt of statements) {
         await d.execute(stmt + ';');
+      }
+      // BEGIN...END 포함 문장은 분할 없이 그대로 실행
+      if (m.rawStatements) {
+        for (const raw of m.rawStatements) {
+          await d.execute(raw);
+        }
       }
     }
   }
@@ -184,6 +194,17 @@ export async function upsertProject(proj: {
        updated_at = unixepoch()`,
     [proj.key, proj.name, proj.path ?? null, proj.defaultEngine ?? null,
      proj.source ?? 'configured', proj.type ?? 'project'],
+  );
+}
+
+export async function loadProjects(): Promise<Array<{
+  key: string; name: string; path?: string; defaultEngine?: string;
+  source: string; type: string;
+}>> {
+  const d = await initDb();
+  return d.select(
+    `SELECT key, name, path, default_engine as defaultEngine, source, type
+     FROM projects ORDER BY updated_at DESC`,
   );
 }
 
@@ -364,6 +385,21 @@ export async function loadBranches(conversationId: string): Promise<Array<{
 }
 
 // ─── Search ──────────────────────────────────────────────────────
+
+/** 디버그: DB 상태 확인 */
+export async function debugDbState(): Promise<{ msgCount: number; ftsCount: number; sample: string[] }> {
+  const d = await initDb();
+  const msgs = await d.select<{ cnt: number }[]>('SELECT count(*) as cnt FROM messages');
+  const fts = await d.select<{ cnt: number }[]>('SELECT count(*) as cnt FROM messages_fts');
+  const samples = await d.select<{ content: string }[]>(
+    'SELECT content FROM messages ORDER BY timestamp DESC LIMIT 3',
+  );
+  return {
+    msgCount: msgs[0]?.cnt ?? 0,
+    ftsCount: fts[0]?.cnt ?? 0,
+    sample: samples.map(s => s.content.slice(0, 50)),
+  };
+}
 
 export async function searchMessages(query: string, limit = 50): Promise<Array<{
   id: string;

@@ -4,13 +4,10 @@ import { useContextStore } from '@/store/contextStore';
 import { wsClient } from '@/lib/wsClient';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import {
-  Plus,
   GearSix,
-  MagnifyingGlass,
   Lightning,
   Eye,
   Brain,
@@ -178,7 +175,7 @@ export function Sidebar() {
   const projects = useChatStore(s => s.projects);
   const activeProjectKey = useChatStore(s => s.activeProjectKey);
   const isConnected = useSystemStore(s => s.isConnected);
-  const [search, setSearch] = useState('');
+  const isDbConnected = useSystemStore(s => s.isDbConnected);
 
   // 연결(재연결) 시 프로젝트 목록 + 활성 프로젝트 대화 목록 리프레시
   useEffect(() => {
@@ -190,36 +187,8 @@ export function Sidebar() {
     }
   }, [isConnected]);
 
-  const handleNewSession = () => {
-    if (!activeProjectKey) return;
-    const newId = crypto.randomUUID();
-    wsClient.sendRpc('conversation.create', { conversation_id: newId, project: activeProjectKey });
-  };
-
   return (
     <aside className="h-full w-full flex flex-col bg-[#131313] font-sans tracking-tight leading-none py-3 shrink-0 px-2">
-
-      {/* Search */}
-      <div className="relative mb-3 px-1">
-        <MagnifyingGlass size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/30 z-10" />
-        <Input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search..."
-          className="h-7 bg-white/5 border-none text-[11px] pl-7 pr-2 text-on-surface placeholder:text-on-surface-variant/30 focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:border-none"
-        />
-      </div>
-
-      {/* New Session CTA */}
-      <button
-        onClick={handleNewSession}
-        disabled={!activeProjectKey}
-        className="flex items-center gap-2 w-full px-2 py-1.5 mb-3 text-on-surface-variant hover:bg-white/5 hover:text-on-surface rounded-[4px] transition-all active:scale-[0.98] disabled:opacity-30 text-[13px]"
-      >
-        <Plus size={14} weight="bold" />
-        <span className="font-medium">New Session</span>
-      </button>
 
       {/* Tree */}
       <ScrollArea className="flex-grow min-h-0">
@@ -228,7 +197,7 @@ export function Sidebar() {
             {isConnected ? 'Loading...' : '연결 안됨'}
           </div>
         ) : (
-          <SidebarTree searchTerm={search} />
+          <SidebarTree searchTerm="" />
         )}
       </ScrollArea>
 
@@ -238,14 +207,21 @@ export function Sidebar() {
       {/* Footer */}
       <div className="pt-2 border-t border-outline-variant/20">
         <div className="px-2 py-1.5 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className={cn(
-              'size-[6px] rounded-full shrink-0',
-              isConnected ? 'bg-[#5e6ad2]' : 'bg-on-surface-variant/20',
-            )} />
-            <span className="text-on-surface-variant/60 font-medium tracking-wide">
-              {isConnected ? 'Connected' : '연결 안됨'}
-            </span>
+          <div className="flex items-center gap-3 text-[11px]">
+            <div className="flex items-center gap-1.5">
+              <span className={cn(
+                'size-[6px] rounded-full shrink-0',
+                isConnected ? 'bg-emerald-400' : 'bg-red-400',
+              )} />
+              <span className="text-on-surface-variant/60 font-medium tracking-wide">API</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className={cn(
+                'size-[6px] rounded-full shrink-0',
+                isDbConnected ? 'bg-emerald-400' : 'bg-red-400',
+              )} />
+              <span className="text-on-surface-variant/60 font-medium tracking-wide">DB</span>
+            </div>
           </div>
           <div className="flex gap-1.5 items-center">
             <button className="text-on-surface-variant/50 hover:text-on-surface transition-colors p-1 rounded hover:bg-white/5" title="Settings">

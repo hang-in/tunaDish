@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSystemStore } from '@/store/systemStore';
 import { useChatStore, type ChatMessage } from '@/store/chatStore';
 import { useContextStore } from '@/store/contextStore';
 import { wsClient } from '@/lib/wsClient';
 import { MessageView } from '@/components/chat/MessageView';
 import { InputArea } from '@/components/chat/InputArea';
+import { isTauriEnv } from '@/lib/db';
 import {
   X,
   GitFork,
@@ -14,11 +15,9 @@ import {
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
 
-/** checkpointId에 해당하는 메시지와 직전 user 메시지를 부모 세션에서 찾아 반환 */
-function getCheckpointContext(convId: string | null, checkpointId: string | undefined): ChatMessage[] {
-  if (!convId || !checkpointId) return [];
-  const parentMsgs = useChatStore.getState().messages[convId];
-  if (!parentMsgs?.length) return [];
+/** checkpointId에 해당하는 메시지 쌍을 메시지 배열에서 찾아 반환 */
+function findCheckpointContext(parentMsgs: ChatMessage[] | undefined, checkpointId: string | undefined): ChatMessage[] {
+  if (!checkpointId || !parentMsgs?.length) return [];
 
   // checkpointId에 해당하는 메시지 찾기
   const cpIdx = parentMsgs.findIndex(m => m.id === checkpointId);
@@ -79,25 +78,51 @@ export function BranchPanel() {
     m => !m.content.startsWith('<!-- branch-context'),
   );
 
-  // checkpoint 기반 부모 컨텍스트 (브랜치를 만든 메시지 쌍)
-  const [parentContext, setParentContext] = useState<ChatMessage[]>([]);
+  // checkpoint 기반 부모 컨텍스트 — DB 우선, Zustand 반응형 폴백
+  const [dbParentContext, setDbParentContext] = useState<ChatMessage[]>([]);
+
+  // DB에서 부모 대화 메시지 로드 (1회)
+  useEffect(() => {
+    if (!convId || !checkpointId) return;
+    if (!isTauriEnv()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const db = await import('@/lib/db');
+        const rows = await db.loadMessages(convId);
+        if (cancelled) return;
+        const msgs: ChatMessage[] = rows.map(r => ({
+          id: r.id, role: r.role as 'user' | 'assistant',
+          content: r.content, timestamp: r.timestamp,
+          status: (r.status as 'done') ?? 'done',
+          engine: r.engine, model: r.model, persona: r.persona,
+        }));
+        setDbParentContext(findCheckpointContext(msgs, checkpointId));
+      } catch (err) {
+        console.warn('[BranchPanel] DB parent load failed:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [convId, checkpointId]);
+
+  // Zustand 반응형 폴백 — DB에 데이터가 없거나 비-Tauri 환경일 때
+  const storeParentMsgs = useChatStore(s => convId ? s.messages[convId] : undefined);
+  const storeParentContext = useMemo(
+    () => findCheckpointContext(storeParentMsgs, checkpointId),
+    [storeParentMsgs, checkpointId],
+  );
+
+  // DB 결과 우선, 없으면 Zustand 폴백
+  const parentContext = dbParentContext.length > 0 ? dbParentContext : storeParentContext;
 
   // Bootstrap: create branch conversation + load history
   useEffect(() => {
     if (!branchChannel || !branchId || !convId || !projectKey) return;
     const chat = useChatStore.getState();
 
-    // checkpoint 기반 부모 컨텍스트를 캡처 (패널 열 때)
-    const ctx = getCheckpointContext(convId, checkpointId);
-    setParentContext(ctx);
-    // 부모 메시지가 아직 로드 안 됐으면 요청 후 재시도
-    if (ctx.length === 0 && checkpointId) {
-      const parentMsgs = chat.messages[convId];
-      if (!parentMsgs?.length) {
-        wsClient.sendRpc('conversation.history', { conversation_id: convId }).then(() => {
-          setParentContext(getCheckpointContext(convId, checkpointId));
-        });
-      }
+    // 부모 메시지가 Zustand에 없으면 서버에 요청 (Zustand 폴백용)
+    if (!chat.messages[convId]?.length && checkpointId) {
+      wsClient.sendRpc('conversation.history', { conversation_id: convId });
     }
 
     if (!chat.conversations[branchChannel]) {
@@ -143,9 +168,13 @@ export function BranchPanel() {
   // 부모 컨텍스트 + 브랜치 메시지 합산
   const messages = [...parentContext, ...branchMessages];
 
-  // Auto-scroll on new messages
+  // Auto-scroll on new messages (초기 로드 시 즉시, 이후 smooth)
+  const prevMsgCountRef = useRef(0);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const prevCount = prevMsgCountRef.current;
+    prevMsgCountRef.current = messages.length;
+    const behavior = prevCount === 0 && messages.length > 1 ? 'instant' : 'smooth';
+    messagesEndRef.current?.scrollIntoView({ behavior });
   }, [messages]);
 
   // Auto-close when switching to a different main session
@@ -213,7 +242,7 @@ export function BranchPanel() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto pt-3 pb-40 space-y-0 scroll-smooth">
+      <div className="flex-1 overflow-y-auto pt-3 pb-40 space-y-0">
         {messagesRaw === undefined ? (
           <div className="flex items-center justify-center h-32 text-[11px] text-on-surface-variant/30">
             Loading...
