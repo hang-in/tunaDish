@@ -253,7 +253,7 @@ function ProjectRow({ node, open, toggle }: { node: SidebarNode; open: boolean; 
   return (
     <div
       className={cn(
-        'flex items-center gap-1.5 w-full pr-1 rounded cursor-pointer group/proj transition-colors',
+        'flex items-center gap-1.5 min-w-0 w-full pr-1 rounded cursor-pointer group/proj transition-colors',
         isActive ? 'bg-white/5' : 'hover:bg-white/3',
       )}
       onClick={handleClick}
@@ -306,7 +306,7 @@ function SessionRow({ node, open, toggle, hasChildren }: {
   return (
     <div
       className={cn(
-        'flex items-center w-full pr-1 rounded cursor-pointer transition-colors group/row',
+        'flex items-center min-w-0 w-full pr-1 rounded cursor-pointer transition-colors group/row',
         isActive
           ? 'bg-[var(--channel-active-bg)] text-[var(--channel-text-active)]'
           : 'text-[var(--channel-text)] hover:bg-[var(--channel-hover-bg)] hover:text-[var(--channel-text-active)]',
@@ -405,7 +405,7 @@ function ConvBranchRow({ node }: { node: SidebarNode }) {
   return (
     <div
       className={cn(
-        'flex items-center gap-1.5 w-full pr-1 text-[11px] rounded cursor-pointer transition-colors group/branch',
+        'flex items-center gap-1.5 min-w-0 w-full pr-1 text-[11px] rounded cursor-pointer transition-colors group/branch',
         isActive
           ? 'bg-violet-500/15 text-violet-300'
           : 'text-on-surface-variant/60 hover:bg-violet-500/10 hover:text-violet-300',
