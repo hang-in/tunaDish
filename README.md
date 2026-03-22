@@ -140,9 +140,27 @@ MIT — [LICENSE](LICENSE)
 
 ## English
 
-### What is tunaDish?
+### Background
 
-tunaDish is a lightweight desktop chat client purpose-built for AI coding agents (Claude, Gemini, Codex). It works as a transport plugin for [tunaPi](https://github.com/hang-in/tunaPi), communicating over WebSocket + JSON-RPC 2.0.
+Built this client because we wanted to use [tunaPi](https://github.com/hang-in/tunaPi) without relying on Mattermost or Slack.
+tunaDish runs as a transport plugin for tunaPi, communicating over WebSocket + JSON-RPC 2.0.
+
+### How It Works
+
+```
+tunaDish (desktop client)
+    ↕ WebSocket + JSON-RPC 2.0
+tunaPi (backend server)
+    ↕ subprocess
+Claude Code / Codex / Gemini CLI (AI agents)
+```
+
+### When It's Useful
+
+- When you want a GUI instead of a terminal to talk to AI
+- When you need to manage multiple projects at once
+- When you want to branch conversations and explore different directions
+- When you want multiple AIs to debate the same topic
 
 ### Key Features
 
@@ -150,27 +168,9 @@ tunaDish is a lightweight desktop chat client purpose-built for AI coding agents
 - **Real-time Streaming** — Live AI responses with progress step display
 - **Conversation Branches** — Fork from any message to explore alternatives, then adopt or discard
 - **Per-message Model Tracking** — Each message records which engine/model was used
-- **`!` Commands** — Quick access to tunaPi commands from the chat input
+- **`!` Commands** — Quick access to tunaPi commands via command palette
+- **Dynamic Engine/Model Switching** — Change engines and models mid-conversation with `!model`
 - **Window State Persistence** — Remembers window position and size across restarts
-
-### Prerequisites
-
-- Node.js 18+
-- Rust (for Tauri builds)
-- [tunaPi](https://github.com/hang-in/tunaPi) installed and configured
-
-### Quick Start
-
-```sh
-# Terminal 1: Start tunaPi server
-tunapi claude --transport tunadish
-
-# Terminal 2: Start the client
-git clone https://github.com/hang-in/tunaDish.git
-cd tunaDish/client
-npm install
-npm run tauri dev
-```
 
 ### Tech Stack
 
@@ -182,6 +182,77 @@ npm run tauri dev
 | State | Zustand |
 | Protocol | WebSocket + JSON-RPC 2.0 |
 | Backend | tunaPi (Python) — separate repo |
+
+### Prerequisites
+
+- Node.js 18+
+- Rust (for Tauri builds)
+- [tunaPi](https://github.com/hang-in/tunaPi) installed and configured
+
+### Setup & Run
+
+```sh
+git clone https://github.com/hang-in/tunaDish.git
+cd tunaDish/client
+npm install
+```
+
+#### 1. Start the tunaPi server
+
+```sh
+tunapi claude --transport tunadish
+```
+
+#### 2. Start the client
+
+```sh
+cd client
+npm run tauri dev
+```
+
+### Project Structure
+
+```
+tunadish/
+├─ client/               # Tauri + React client
+│   ├─ src/              # React source
+│   ├─ src-tauri/        # Tauri (Rust) config
+│   └─ package.json
+├─ vendor/rawq/          # rawq git submodule
+├─ scripts/              # Build scripts
+└─ docs/
+    ├─ archive/          # Completed sprint records
+    ├─ explanation/      # Design documents
+    ├─ plans/            # Development plans
+    ├─ prompts/          # tunaPi request prompts
+    └─ reference/        # PRD, briefing, handoff
+```
+
+### Common Commands
+
+Type `!` in the chat input to open the command palette.
+
+| What you want to do | Example |
+|---|---|
+| Ask the AI to do something | Just type |
+| Switch engine | `!model codex` |
+| Set specific model | `!model claude claude-opus-4-6` |
+| Check project status | `!status` |
+| Create conversation branch | `!branch create experiment` |
+| Multi-agent debate | `!rt "architecture review"` |
+| Cancel execution | `!cancel` |
+| See all commands | `!help` |
+
+### Current Status
+
+Sprint 7 (stabilization & tech debt) in progress.
+
+Details: [docs/plans/development_plan.md](docs/plans/development_plan.md)
+
+### Thanks
+
+- [tunaPi](https://github.com/hang-in/tunaPi) — The backend engine
+- [takopi](https://github.com/banteg/takopi) — Where it all started
 
 ### License
 
