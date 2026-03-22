@@ -57,6 +57,7 @@ fn close_branch_window(app: tauri::AppHandle, branch_id: String) -> Result<(), S
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             greet,
             open_branch_window,

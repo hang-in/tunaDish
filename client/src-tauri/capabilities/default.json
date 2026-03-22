@@ -12,6 +12,9 @@
     "core:window:allow-start-dragging",
     "core:window:allow-is-maximized",
     "core:window:allow-set-focus",
-    "core:window:allow-create"
+    "core:window:allow-create",
+    "window-state:allow-restore-state",
+    "window-state:allow-save-window-state",
+    "window-state:default"
   ]
 }
