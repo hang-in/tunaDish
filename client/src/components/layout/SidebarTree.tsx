@@ -346,11 +346,13 @@ function ConvBranchRow({ node }: { node: SidebarNode }) {
   const branch = node.branch;
   if (!branch) return null;
 
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const activeBranchId = useSystemStore(s => s.branchPanelBranchId);
   const openBranchPanel = useSystemStore(s => s.openBranchPanel);
   const isActive = activeBranchId === branch.id;
 
   const handleClick = () => {
+    if (confirmDelete) return;
     const state = useChatStore.getState();
     const activeId = state.activeConversationId;
     let convId: string | null = null;
@@ -362,7 +364,12 @@ function ConvBranchRow({ node }: { node: SidebarNode }) {
     }
   };
 
-  const handleDelete = (e: React.MouseEvent) => {
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConfirmDelete(true);
+  };
+
+  const handleDeleteConfirm = (e: React.MouseEvent) => {
     e.stopPropagation();
     const state = useChatStore.getState();
     const activeId = state.activeConversationId;
@@ -371,7 +378,29 @@ function ConvBranchRow({ node }: { node: SidebarNode }) {
     else if (activeId) convId = state.conversations[activeId]?.parentId ?? null;
     convId = convId ?? branch.rtSessionId ?? null;
     if (convId) wsClient.sendRpc('branch.delete', { conversation_id: convId, branch_id: branch.id });
+    setConfirmDelete(false);
   };
+
+  const handleDeleteCancel = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConfirmDelete(false);
+  };
+
+  if (confirmDelete) {
+    return (
+      <div className="flex items-center gap-1 w-full pr-1 text-[10px] rounded bg-red-500/10 text-red-300 py-0.5 px-1">
+        <span className="truncate flex-1">삭제?</span>
+        <button type="button" onClick={handleDeleteConfirm}
+          className="px-1.5 py-0.5 rounded bg-red-500/20 hover:bg-red-500/40 text-red-300 transition-colors shrink-0">
+          확인
+        </button>
+        <button type="button" onClick={handleDeleteCancel}
+          className="px-1.5 py-0.5 rounded hover:bg-white/5 text-on-surface-variant/50 transition-colors shrink-0">
+          취소
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -385,7 +414,7 @@ function ConvBranchRow({ node }: { node: SidebarNode }) {
     >
       <GitFork size={12} className="text-violet-400/60 shrink-0" />
       <span className="truncate flex-1">{branch.label}</span>
-      <button type="button" tabIndex={-1} onClick={handleDelete}
+      <button type="button" tabIndex={-1} onClick={handleDeleteClick}
         className="hidden group-hover/branch:flex items-center justify-center size-4 rounded text-on-surface-variant/30 hover:text-red-400 hover:bg-red-400/10 transition-colors shrink-0"
         title="Delete branch">
         <Trash size={10} />

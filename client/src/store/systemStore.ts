@@ -13,6 +13,7 @@ interface SystemState {
   branchPanelConvId: string | null;
   branchPanelLabel: string;
   branchPanelProjectKey: string | null;
+  branchPanelCheckpointId: string | null;
 
   setConnected: (status: boolean) => void;
   toggleSidebar: () => void;
@@ -21,7 +22,7 @@ interface SystemState {
   setContextPanelOpen: (open: boolean) => void;
   setSidebarWidth: (w: number) => void;
   setContextPanelWidth: (w: number) => void;
-  openBranchPanel: (branchId: string, convId: string, label: string, projectKey: string) => void;
+  openBranchPanel: (branchId: string, convId: string, label: string, projectKey: string, checkpointId?: string) => void;
   closeBranchPanel: () => void;
 }
 
@@ -36,6 +37,7 @@ export const useSystemStore = create<SystemState>((set) => ({
   branchPanelConvId: null,
   branchPanelLabel: '',
   branchPanelProjectKey: null,
+  branchPanelCheckpointId: null,
 
   setConnected: (status) => set({ isConnected: status }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -44,12 +46,13 @@ export const useSystemStore = create<SystemState>((set) => ({
   setContextPanelOpen: (open) => set({ contextPanelOpen: open }),
   setSidebarWidth: (w) => set({ sidebarWidth: w }),
   setContextPanelWidth: (w) => set({ contextPanelWidth: w }),
-  openBranchPanel: (branchId, convId, label, projectKey) => set({
+  openBranchPanel: (branchId, convId, label, projectKey, checkpointId) => set({
     branchPanelOpen: true,
     branchPanelBranchId: branchId,
     branchPanelConvId: convId,
     branchPanelLabel: label,
     branchPanelProjectKey: projectKey,
+    branchPanelCheckpointId: checkpointId ?? null,
   }),
   closeBranchPanel: () => set({
     branchPanelOpen: false,
@@ -57,5 +60,6 @@ export const useSystemStore = create<SystemState>((set) => ({
     branchPanelConvId: null,
     branchPanelLabel: '',
     branchPanelProjectKey: null,
+    branchPanelCheckpointId: null,
   }),
 }));

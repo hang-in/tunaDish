@@ -58,19 +58,24 @@ export function BranchPanel() {
   const branchChannel = branchId ? `branch:${branchId}` : null;
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // convBranches에서 checkpointId 조회
-  const checkpointId = useContextStore(s => {
+  // checkpointId: openBranchPanel에서 전달된 값 우선, 없으면 convBranches에서 조회
+  const panelCheckpointId = useSystemStore(s => s.branchPanelCheckpointId);
+  const storeCheckpointId = useContextStore(s => {
     for (const list of Object.values(s.convBranchesByProject)) {
       const found = list.find(b => b.id === branchId);
       if (found) return found.checkpointId;
     }
     return undefined;
   });
+  const checkpointId = panelCheckpointId ?? storeCheckpointId;
 
   const messagesRaw = useChatStore(s =>
     branchChannel ? s.messages[branchChannel] : undefined,
   );
-  const branchMessages = messagesRaw ?? EMPTY_MESSAGES;
+  // 서버가 주입하는 branch-context 메타 메시지 필터링
+  const branchMessages = (messagesRaw ?? EMPTY_MESSAGES).filter(
+    m => !m.content.startsWith('<!-- branch-context'),
+  );
 
   // checkpoint 기반 부모 컨텍스트 (브랜치를 만든 메시지 쌍)
   const parentContext = useRef<ChatMessage[]>([]);

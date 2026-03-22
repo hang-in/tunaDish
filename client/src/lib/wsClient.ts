@@ -7,6 +7,7 @@ import { contextLoadedConvs } from '@/lib/contextCache';
 type RequestParams = Record<string, unknown>;
 
 interface PendingRequest {
+  method: string;
   resolve: (result: unknown) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -38,6 +39,8 @@ class WebSocketClient {
   private awaitingPong = false;
   private nextId = 1;
   private pending = new Map<number, PendingRequest>();
+  /** branch.create 요청의 checkpoint_id 임시 저장 (branch.created 수신 시 사용) */
+  private _pendingBranchCheckpoint: string | null = null;
 
   constructor(url?: string) {
     this.url = url ?? resolveWsUrl();
@@ -76,9 +79,10 @@ class WebSocketClient {
           } else {
             req.resolve(data.result);
           }
-          // 표준 response에도 notification 파이프라인으로 전달 (UI 반영용)
-          if (data.result && data.method) {
-            this.handleNotification({ method: data.method, params: data.result });
+          // 표준 response를 notification 파이프라인으로 전달 (UI store 반영)
+          if (data.result) {
+            const notifMethod = data.method ?? `${req.method}.result`;
+            this.handleNotification({ method: notifMethod, params: data.result });
           }
           return;
         }
@@ -146,16 +150,18 @@ class WebSocketClient {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error('WebSocket is not connected'));
     }
+    // branch.create 시 checkpoint_id 캡처 (branch.created 핸들러에서 사용)
+    if (method === 'branch.create' && params.checkpoint_id) {
+      this._pendingBranchCheckpoint = params.checkpoint_id as string;
+    }
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         if (this.pending.delete(id)) {
-          // 현재 서버는 notification 방식이므로 timeout ≠ 에러.
-          // 표준 response 전환 전까지 silent resolve.
           resolve(undefined);
         }
       }, RPC_TIMEOUT_MS);
-      this.pending.set(id, { resolve, reject, timer });
+      this.pending.set(id, { method, resolve, reject, timer });
       this.ws!.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }));
     });
   }
@@ -248,6 +254,7 @@ class WebSocketClient {
         );
         break;
       case 'conversation.created':
+      case 'conversation.create.result':
         chat.addConversation({
           id: params.conversation_id as string,
           projectKey: params.project as string,
@@ -258,6 +265,7 @@ class WebSocketClient {
         });
         break;
       case 'conversation.deleted':
+      case 'conversation.delete.result':
         chat.removeConversation(params.conversation_id as string);
         break;
       case 'conversation.history.result': {
@@ -390,23 +398,27 @@ class WebSocketClient {
         const branchId = params.branch_id as string;
         const label = params.label as string;
         const convId = params.conversation_id as string;
+        const checkpointId = this._pendingBranchCheckpoint;
+        this._pendingBranchCheckpoint = null;
         chat.setActiveBranch(branchId, label);
-        // Open branch in slide panel (replaces multi-window)
+        // Open branch in slide panel with checkpoint context
         const createdConv = chat.conversations[convId];
         const createdProjectKey = createdConv?.projectKey ?? '';
-        useSystemStore.getState().openBranchPanel(branchId, convId, label, createdProjectKey);
+        useSystemStore.getState().openBranchPanel(branchId, convId, label, createdProjectKey, checkpointId ?? undefined);
         // Refresh branch list
         if (convId && createdProjectKey) {
           this.sendRpc('project.context', { conversation_id: convId, project: createdProjectKey });
         }
         break;
       }
-      case 'branch.switched': {
+      case 'branch.switched':
+      case 'branch.switch.result': {
         const branchId = params.branch_id as string | null;
         chat.setActiveBranch(branchId);
         break;
       }
-      case 'branch.adopted': {
+      case 'branch.adopted':
+      case 'branch.adopt.result': {
         const branchId = params.branch_id as string;
         const convId = params.conversation_id as string;
         chat.setActiveBranch(null);
@@ -423,7 +435,8 @@ class WebSocketClient {
         }
         break;
       }
-      case 'branch.archived': {
+      case 'branch.archived':
+      case 'branch.archive.result': {
         const branchId = params.branch_id as string;
         if (chat.activeBranchId === branchId) {
           chat.setActiveBranch(null);
@@ -435,7 +448,8 @@ class WebSocketClient {
         }
         break;
       }
-      case 'branch.deleted': {
+      case 'branch.deleted':
+      case 'branch.delete.result': {
         const branchId = params.branch_id as string;
         if (chat.activeBranchId === branchId) {
           chat.setActiveBranch(null);
