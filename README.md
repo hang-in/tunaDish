@@ -6,13 +6,133 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2-orange.svg)](https://v2.tauri.app/)
 
-AI 코딩 에이전트 전용 경량 데스크톱 채팅 클라이언트
+A lightweight desktop chat client for AI coding agents
 
-[**한국어**](#한국어) | [English](#english)
+[**English**](#background) | [한국어](#한국어) | [日本語](#日本語)
 
-<!-- TODO: 스크린샷/데모 GIF 추가 -->
+<!-- TODO: screenshot / demo GIF -->
 
 </div>
+
+---
+
+### Background
+
+Built this client because we wanted to use [tunaPi](https://github.com/hang-in/tunaPi) without relying on Mattermost or Slack.
+tunaDish runs as a transport plugin for tunaPi, communicating over WebSocket + JSON-RPC 2.0.
+
+### How It Works
+
+```
+tunaDish (desktop client)
+    ↕ WebSocket + JSON-RPC 2.0
+tunaPi (backend server)
+    ↕ subprocess
+Claude Code / Codex / Gemini CLI (AI agents)
+```
+
+### When It's Useful
+
+- When you want a GUI instead of a terminal to talk to AI
+- When you need to manage multiple projects at once
+- When you want to branch conversations and explore different directions
+- When you want multiple AIs to debate the same topic
+
+### Key Features
+
+- **Project Context** — Independent sessions per tunaPi project with engine/model settings
+- **Real-time Streaming** — Live AI responses with progress step display
+- **Conversation Branches** — Fork from any message to explore alternatives, then adopt or discard
+- **Per-message Model Tracking** — Each message records which engine/model was used
+- **`!` Commands** — Quick access to tunaPi commands via command palette
+- **Dynamic Engine/Model Switching** — Change engines and models mid-conversation with `!model`
+- **Window State Persistence** — Remembers window position and size across restarts
+
+### Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Framework | Tauri v2 (Rust + WebView) |
+| UI | React + TypeScript + Tailwind CSS |
+| Components | shadcn/ui (base-ui) |
+| State | Zustand |
+| Protocol | WebSocket + JSON-RPC 2.0 |
+| Backend | tunaPi (Python) — separate repo |
+
+### Prerequisites
+
+- Node.js 18+
+- Rust (for Tauri builds)
+- [tunaPi](https://github.com/hang-in/tunaPi) installed and configured
+
+### Setup & Run
+
+```sh
+git clone https://github.com/hang-in/tunaDish.git
+cd tunaDish/client
+npm install
+```
+
+#### 1. Start the tunaPi server
+
+```sh
+tunapi claude --transport tunadish
+```
+
+#### 2. Start the client
+
+```sh
+cd client
+npm run tauri dev
+```
+
+### Project Structure
+
+```
+tunadish/
+├─ client/               # Tauri + React client
+│   ├─ src/              # React source
+│   ├─ src-tauri/        # Tauri (Rust) config
+│   └─ package.json
+├─ vendor/rawq/          # rawq git submodule
+├─ scripts/              # Build scripts
+└─ docs/
+    ├─ archive/          # Completed sprint records
+    ├─ explanation/      # Design documents
+    ├─ plans/            # Development plans
+    ├─ prompts/          # tunaPi request prompts
+    └─ reference/        # PRD, briefing, handoff
+```
+
+### Common Commands
+
+Type `!` in the chat input to open the command palette.
+
+| What you want to do | Example |
+|---|---|
+| Ask the AI to do something | Just type |
+| Switch engine | `!model codex` |
+| Set specific model | `!model claude claude-opus-4-6` |
+| Check project status | `!status` |
+| Create conversation branch | `!branch create experiment` |
+| Multi-agent debate | `!rt "architecture review"` |
+| Cancel execution | `!cancel` |
+| See all commands | `!help` |
+
+### Current Status
+
+Sprint 7 (stabilization & tech debt) in progress.
+
+Details: [docs/plans/development_plan.md](docs/plans/development_plan.md)
+
+### Thanks
+
+- [tunaPi](https://github.com/hang-in/tunaPi) — The backend engine
+- [takopi](https://github.com/banteg/takopi) — Where it all started
+
+### License
+
+MIT — [LICENSE](LICENSE)
 
 ---
 
@@ -138,58 +258,58 @@ MIT — [LICENSE](LICENSE)
 
 ---
 
-## English
+## 日本語
 
-### Background
+### 背景
 
-Built this client because we wanted to use [tunaPi](https://github.com/hang-in/tunaPi) without relying on Mattermost or Slack.
-tunaDish runs as a transport plugin for tunaPi, communicating over WebSocket + JSON-RPC 2.0.
+[tunaPi](https://github.com/hang-in/tunaPi)をMattermost/Slackなしで使いたくて作った専用クライアントです。
+tunaPiのtransportプラグインとして動作し、WebSocket + JSON-RPC 2.0で通信します。
 
-### How It Works
+### 仕組み
 
 ```
-tunaDish (desktop client)
+tunaDish (デスクトップクライアント)
     ↕ WebSocket + JSON-RPC 2.0
-tunaPi (backend server)
+tunaPi (バックエンドサーバー)
     ↕ subprocess
-Claude Code / Codex / Gemini CLI (AI agents)
+Claude Code / Codex / Gemini CLI (AIエージェント)
 ```
 
-### When It's Useful
+### こんな時に便利
 
-- When you want a GUI instead of a terminal to talk to AI
-- When you need to manage multiple projects at once
-- When you want to branch conversations and explore different directions
-- When you want multiple AIs to debate the same topic
+- ターミナルの代わりにGUIでAIに作業を任せたい時
+- 複数のプロジェクトを同時に管理したい時
+- 会話をブランチに分けて別の方向を試したい時
+- 複数のAIに同じテーマで議論させたい時
 
-### Key Features
+### 主な機能
 
-- **Project Context** — Independent sessions per tunaPi project with engine/model settings
-- **Real-time Streaming** — Live AI responses with progress step display
-- **Conversation Branches** — Fork from any message to explore alternatives, then adopt or discard
-- **Per-message Model Tracking** — Each message records which engine/model was used
-- **`!` Commands** — Quick access to tunaPi commands via command palette
-- **Dynamic Engine/Model Switching** — Change engines and models mid-conversation with `!model`
-- **Window State Persistence** — Remembers window position and size across restarts
+- **プロジェクトコンテキスト** — tunaPiプロジェクトごとの独立セッション、エンジン/モデル設定
+- **リアルタイムストリーミング** — AI応答をリアルタイムで確認、進行ステップ表示
+- **会話ブランチ** — 特定のメッセージから分岐して別の方向を探索、採用/保管/削除
+- **メッセージごとのモデル追跡** — モデルを切り替えながら会話しても、各メッセージに使用されたモデルを表示
+- **`!` コマンド** — チャット入力で`!`を入力してtunaPiコマンドを素早く実行
+- **エンジン/モデル動的切替** — 会話中に`!model`でエンジンとモデルを自由に変更
+- **ウィンドウ状態記憶** — アプリを閉じて開いても前の位置とサイズを維持
 
-### Tech Stack
+### 技術スタック
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | Tauri v2 (Rust + WebView) |
+| レイヤー | 技術 |
+|---------|------|
+| フレームワーク | Tauri v2 (Rust + WebView) |
 | UI | React + TypeScript + Tailwind CSS |
-| Components | shadcn/ui (base-ui) |
-| State | Zustand |
-| Protocol | WebSocket + JSON-RPC 2.0 |
-| Backend | tunaPi (Python) — separate repo |
+| コンポーネント | shadcn/ui (base-ui) |
+| 状態管理 | Zustand |
+| 通信 | WebSocket + JSON-RPC 2.0 |
+| バックエンド | tunaPi (Python) — 別リポジトリ |
 
-### Prerequisites
+### 前提条件
 
 - Node.js 18+
-- Rust (for Tauri builds)
-- [tunaPi](https://github.com/hang-in/tunaPi) installed and configured
+- Rust (Tauriビルド用)
+- [tunaPi](https://github.com/hang-in/tunaPi) インストール・設定済み
 
-### Setup & Run
+### セットアップ & 実行
 
 ```sh
 git clone https://github.com/hang-in/tunaDish.git
@@ -197,63 +317,39 @@ cd tunaDish/client
 npm install
 ```
 
-#### 1. Start the tunaPi server
+#### 1. tunaPiサーバー起動
 
 ```sh
 tunapi claude --transport tunadish
 ```
 
-#### 2. Start the client
+#### 2. クライアント起動
 
 ```sh
 cd client
 npm run tauri dev
 ```
 
-### Project Structure
+### よく使うコマンド
 
-```
-tunadish/
-├─ client/               # Tauri + React client
-│   ├─ src/              # React source
-│   ├─ src-tauri/        # Tauri (Rust) config
-│   └─ package.json
-├─ vendor/rawq/          # rawq git submodule
-├─ scripts/              # Build scripts
-└─ docs/
-    ├─ archive/          # Completed sprint records
-    ├─ explanation/      # Design documents
-    ├─ plans/            # Development plans
-    ├─ prompts/          # tunaPi request prompts
-    └─ reference/        # PRD, briefing, handoff
-```
+チャット入力欄で `!` を入力するとコマンドパレットが表示されます。
 
-### Common Commands
-
-Type `!` in the chat input to open the command palette.
-
-| What you want to do | Example |
+| やりたいこと | 例 |
 |---|---|
-| Ask the AI to do something | Just type |
-| Switch engine | `!model codex` |
-| Set specific model | `!model claude claude-opus-4-6` |
-| Check project status | `!status` |
-| Create conversation branch | `!branch create experiment` |
-| Multi-agent debate | `!rt "architecture review"` |
-| Cancel execution | `!cancel` |
-| See all commands | `!help` |
+| AIに作業を依頼 | そのまま入力 |
+| エンジン切替 | `!model codex` |
+| モデル指定 | `!model claude claude-opus-4-6` |
+| プロジェクト状態確認 | `!status` |
+| 会話ブランチ作成 | `!branch create experiment` |
+| マルチエージェント議論 | `!rt "アーキテクチャレビュー"` |
+| 実行キャンセル | `!cancel` |
+| 全コマンド表示 | `!help` |
 
-### Current Status
+### 感謝
 
-Sprint 7 (stabilization & tech debt) in progress.
+- [tunaPi](https://github.com/hang-in/tunaPi) — バックエンドエンジン
+- [takopi](https://github.com/banteg/takopi) — すべての出発点
 
-Details: [docs/plans/development_plan.md](docs/plans/development_plan.md)
-
-### Thanks
-
-- [tunaPi](https://github.com/hang-in/tunaPi) — The backend engine
-- [takopi](https://github.com/banteg/takopi) — Where it all started
-
-### License
+### ライセンス
 
 MIT — [LICENSE](LICENSE)
