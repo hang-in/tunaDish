@@ -8,6 +8,8 @@ import { InputArea } from '@/components/chat/InputArea';
 import {
   X,
   GitFork,
+  GitMerge,
+  Archive,
 } from '@phosphor-icons/react';
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
@@ -86,7 +88,17 @@ export function BranchPanel() {
     const chat = useChatStore.getState();
 
     // checkpoint 기반 부모 컨텍스트를 캡처 (패널 열 때)
-    setParentContext(getCheckpointContext(convId, checkpointId));
+    const ctx = getCheckpointContext(convId, checkpointId);
+    setParentContext(ctx);
+    // 부모 메시지가 아직 로드 안 됐으면 요청 후 재시도
+    if (ctx.length === 0 && checkpointId) {
+      const parentMsgs = chat.messages[convId];
+      if (!parentMsgs?.length) {
+        wsClient.sendRpc('conversation.history', { conversation_id: convId }).then(() => {
+          setParentContext(getCheckpointContext(convId, checkpointId));
+        });
+      }
+    }
 
     if (!chat.conversations[branchChannel]) {
       // Snapshot parent's settings so the branch starts with the same config
@@ -132,13 +144,20 @@ export function BranchPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Auto-close when switching to a different session
+  // Auto-close when switching to a different session or branch cleared
   const activeConvId = useChatStore(s => s.activeConversationId);
+  const activeBranchId = useChatStore(s => s.activeBranchId);
   useEffect(() => {
-    if (activeConvId && convId && activeConvId !== convId) {
+    if (activeConvId && convId && activeConvId !== convId && !activeConvId.startsWith('branch:')) {
       closeBranchPanel();
     }
   }, [activeConvId, convId, closeBranchPanel]);
+  // adopt/delete 등으로 activeBranch가 해제되면 패널 닫기
+  useEffect(() => {
+    if (branchId && activeBranchId === null) {
+      closeBranchPanel();
+    }
+  }, [activeBranchId, branchId, closeBranchPanel]);
 
   // Listen for branch deletion
   useEffect(() => {
@@ -166,6 +185,26 @@ export function BranchPanel() {
         <GitFork size={16} className="text-violet-400" weight="bold" />
         <span className="font-medium text-[13px] text-violet-300 truncate flex-1">{label}</span>
         <span className="text-[10px] text-on-surface-variant/30 font-mono">{branchId?.slice(0, 8)}</span>
+        <button
+          onClick={() => {
+            if (!convId || !branchId) return;
+            wsClient.sendRpc('branch.adopt', { conversation_id: convId, branch_id: branchId });
+          }}
+          className="p-1 rounded text-on-surface-variant/40 hover:text-emerald-400 hover:bg-emerald-400/10 transition-colors"
+          title="채택 (main에 병합)"
+        >
+          <GitMerge size={14} />
+        </button>
+        <button
+          onClick={() => {
+            if (!convId || !branchId) return;
+            wsClient.sendRpc('branch.archive', { conversation_id: convId, branch_id: branchId });
+          }}
+          className="p-1 rounded text-on-surface-variant/40 hover:text-amber-400 hover:bg-amber-400/10 transition-colors"
+          title="보관"
+        >
+          <Archive size={14} />
+        </button>
         <button
           onClick={closeBranchPanel}
           className="p-1 rounded text-on-surface-variant/50 hover:text-on-surface hover:bg-white/5 transition-colors"

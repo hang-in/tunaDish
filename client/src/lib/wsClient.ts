@@ -247,11 +247,16 @@ class WebSocketClient {
         break;
       case 'run.status': {
         const convId = params.conversation_id as string;
+        const branchId = params.branch_id as string | undefined;
         const status = params.status as RunStatus;
+        // 브랜치 실행이면 branch:${branchId} 키에도 상태 반영
+        const channelId = branchId ? `branch:${branchId}` : convId;
         run.setRunStatus(convId, status);
+        if (branchId) run.setRunStatus(channelId, status);
         // 실행 완료 시 streaming 메시지를 finalize
         if (status === 'idle') {
           chat.finalizeStreamingMessages(convId);
+          if (branchId) chat.finalizeStreamingMessages(channelId);
         }
         break;
       }
