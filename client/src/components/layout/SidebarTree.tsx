@@ -5,6 +5,17 @@ import { useRunStore } from '@/store/runStore';
 import { useSystemStore } from '@/store/systemStore';
 import { wsClient } from '@/lib/wsClient';
 import { cn } from '@/lib/utils';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 import {
   GitBranch,
   ChatCircle,
@@ -31,9 +42,9 @@ interface SidebarTreeProps { searchTerm: string }
 export function SidebarTree({ searchTerm }: SidebarTreeProps) {
   const data = useSidebarTreeData(searchTerm);
   return (
-    <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-surface-container-high scrollbar-track-transparent pr-0.5">
+    <ScrollArea className="h-full pr-0.5">
       <TreeNodeList nodes={data} lineGuides={[]} />
-    </div>
+    </ScrollArea>
   );
 }
 
@@ -381,46 +392,52 @@ function ConvBranchRow({ node }: { node: SidebarNode }) {
     setConfirmDelete(false);
   };
 
-  const handleDeleteCancel = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setConfirmDelete(false);
-  };
-
-  if (confirmDelete) {
-    return (
-      <div className="flex items-center gap-1 w-full pr-1 text-[10px] rounded bg-red-500/10 text-red-300 py-0.5 px-1">
-        <span className="truncate flex-1">삭제?</span>
-        <button type="button" onClick={handleDeleteConfirm}
-          className="px-1.5 py-0.5 rounded bg-red-500/20 hover:bg-red-500/40 text-red-300 transition-colors shrink-0">
-          확인
-        </button>
-        <button type="button" onClick={handleDeleteCancel}
-          className="px-1.5 py-0.5 rounded hover:bg-white/5 text-on-surface-variant/50 transition-colors shrink-0">
-          취소
-        </button>
-      </div>
-    );
-  }
 
   return (
-    <div
-      className={cn(
-        'flex items-center gap-1.5 min-w-0 w-full pr-1 text-[11px] rounded cursor-pointer transition-colors group/branch',
-        isActive
-          ? 'bg-violet-500/15 text-violet-300'
-          : 'text-on-surface-variant/60 hover:bg-violet-500/10 hover:text-violet-300',
-      )}
-      onClick={handleClick}
-    >
-      <GitFork size={12} className="text-violet-400/60 shrink-0 self-center" />
-      <span className="truncate flex-1">{branch.label}</span>
-      <button type="button" tabIndex={-1} onClick={handleDeleteClick}
-        className="hidden group-hover/branch:flex items-center justify-center size-4 rounded text-on-surface-variant/30 hover:text-red-400 hover:bg-red-400/10 transition-colors shrink-0"
-        title="Delete branch">
-        <Trash size={10} />
-      </button>
-      {!isActive && <span className="text-[9px] text-on-surface-variant/25 shrink-0 group-hover/branch:hidden">Open →</span>}
-    </div>
+    <>
+      <div
+        className={cn(
+          'flex items-center gap-1.5 min-w-0 w-full pr-1 text-[11px] rounded cursor-pointer transition-colors group/branch',
+          isActive
+            ? 'bg-violet-500/15 text-violet-300'
+            : 'text-on-surface-variant/60 hover:bg-violet-500/10 hover:text-violet-300',
+        )}
+        onClick={handleClick}
+      >
+        <GitFork size={12} className="text-violet-400/60 shrink-0 self-center" />
+        <span className="truncate flex-1">{branch.label}</span>
+        <button type="button" tabIndex={-1} onClick={handleDeleteClick}
+          className="hidden group-hover/branch:flex items-center justify-center size-4 rounded text-on-surface-variant/30 hover:text-red-400 hover:bg-red-400/10 transition-colors shrink-0"
+          title="Delete branch">
+          <Trash size={10} />
+        </button>
+        {!isActive && <span className="text-[9px] text-on-surface-variant/25 shrink-0 group-hover/branch:hidden">Open →</span>}
+      </div>
+
+      <AlertDialog open={confirmDelete} onOpenChange={v => { if (!v) setConfirmDelete(false); }}>
+        <AlertDialogContent size="sm" className="bg-[#1a1a1a] border-outline-variant/30">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[13px]">브랜치 삭제</AlertDialogTitle>
+            <AlertDialogDescription className="text-[11px] text-on-surface-variant/70">
+              <span className="font-medium text-on-surface">{branch.label}</span> 브랜치를 삭제하시겠습니까?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel variant="ghost" size="sm" className="text-[11px] bg-white/5 text-on-surface-variant/60 hover:bg-white/10">
+              취소
+            </AlertDialogCancel>
+            <AlertDialogAction
+              size="sm"
+              variant="ghost"
+              onClick={handleDeleteConfirm}
+              className="text-[11px] bg-red-500/15 text-red-400 hover:bg-red-500/25"
+            >
+              삭제
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 

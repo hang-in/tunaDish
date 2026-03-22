@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useChatStore } from '@/store/chatStore';
 import { useRunStore } from '@/store/runStore';
 import { useContextStore } from '@/store/contextStore';
@@ -6,6 +6,7 @@ import { useConvSettings } from '@/lib/useConvSettings';
 import { wsClient } from '@/lib/wsClient';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Command, CommandList, CommandGroup, CommandItem } from '@/components/ui/command';
 import {
   PaperPlaneRight,
   Stop,
@@ -27,7 +28,7 @@ import {
 } from '@phosphor-icons/react';
 
 // --- Command palette ---
-interface Command {
+interface CmdDef {
   name: string;
   desc: string;
   icon: React.ReactNode;
@@ -35,7 +36,7 @@ interface Command {
   immediate?: boolean;     // if true, send immediately on select
 }
 
-const COMMANDS: Command[] = [
+const COMMANDS: CmdDef[] = [
   { name: 'search', desc: '코드 검색', icon: <MagnifyingGlass size={14} className="text-blue-400" />, insert: '!search ' },
   { name: 'map', desc: '프로젝트 구조 보기', icon: <TreeStructure size={14} className="text-emerald-400" />, insert: '!map ' },
   { name: 'model', desc: '엔진/모델 변경', icon: <Lightning size={14} className="text-primary" />, insert: '!model ' },
@@ -48,35 +49,37 @@ const COMMANDS: Command[] = [
 
 function CommandPalette({ query, onSelect, selectedIndex }: {
   query: string;
-  onSelect: (cmd: Command) => void;
+  onSelect: (cmd: CmdDef) => void;
   selectedIndex: number;
 }) {
-  const filtered = useMemo(
-    () => COMMANDS.filter(c => c.name.includes(query.toLowerCase())),
-    [query],
-  );
+  const filtered = COMMANDS.filter(c => c.name.includes(query.toLowerCase()));
 
   if (filtered.length === 0) return null;
 
   return (
-    <div className="absolute bottom-full left-0 right-0 mb-1 mx-0 bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl overflow-hidden z-20">
-      <div className="px-3 py-1.5 border-b border-white/5 text-[10px] text-on-surface-variant/40 font-semibold uppercase tracking-wider">Commands</div>
-      {filtered.map((cmd, i) => (
-        <button
-          key={cmd.name}
-          onMouseDown={e => { e.preventDefault(); onSelect(cmd); }}
-          className={cn(
-            'flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors',
-            i === selectedIndex % filtered.length
-              ? 'bg-primary/15 text-on-surface'
-              : 'text-on-surface-variant/70 hover:bg-white/5',
-          )}
-        >
-          {cmd.icon}
-          <span className="text-[12px] font-medium">!{cmd.name}</span>
-          <span className="text-[11px] text-on-surface-variant/40 ml-auto">{cmd.desc}</span>
-        </button>
-      ))}
+    <div className="absolute bottom-full left-0 right-0 mb-1 z-20">
+      <Command
+        className="bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl"
+        shouldFilter={false}
+      >
+        <CommandList>
+          <CommandGroup heading="Commands" className="[&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-on-surface-variant/40 [&_[cmdk-group-heading]]:border-b [&_[cmdk-group-heading]]:border-white/5">
+            {filtered.map((cmd, i) => (
+              <CommandItem
+                key={cmd.name}
+                value={cmd.name}
+                onSelect={() => onSelect(cmd)}
+                data-selected={i === selectedIndex % filtered.length || undefined}
+                className="flex items-center gap-2.5 px-3 py-1.5 text-on-surface-variant/70 data-selected:bg-primary/15 data-selected:text-on-surface rounded-none"
+              >
+                {cmd.icon}
+                <span className="text-[12px] font-medium">!{cmd.name}</span>
+                <span className="text-[11px] text-on-surface-variant/40 ml-auto">{cmd.desc}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        </CommandList>
+      </Command>
     </div>
   );
 }
@@ -105,9 +108,8 @@ function QuickChipEngine({ convId, compact }: { convId: string; compact?: boolea
     setOpen(false);
   };
 
-  const engineIds = Object.keys(availableEngines).length > 0
-    ? Object.keys(availableEngines)
-    : ['claude', 'gemini', 'codex'];
+  const engineIds = Object.keys(availableEngines);
+  const hasEngines = engineIds.length > 0;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -120,37 +122,43 @@ function QuickChipEngine({ convId, compact }: { convId: string; compact?: boolea
         {!compact && <CaretDown size={10} className="opacity-50" />}
       </PopoverTrigger>
       <PopoverContent align="start" sideOffset={6} className="w-52 p-1 max-h-72 overflow-y-auto">
-        {engineIds.map(eng => {
-          const models = availableEngines[eng] ?? [];
-          const isActive = eng === engine;
-          return (
-            <div key={eng}>
-              <button
-                onClick={() => selectEngine(eng)}
-                className={cn(
-                  'w-full text-left px-2 py-1 rounded text-[11px] font-semibold uppercase tracking-wide transition-colors',
-                  isActive ? 'text-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant',
-                )}
-              >
-                {eng}
-              </button>
-              {models.map(m => (
+        {!hasEngines ? (
+          <div className="px-2 py-3 text-[11px] text-on-surface-variant/40 text-center">
+            서버에서 엔진 목록을 받지 못했습니다
+          </div>
+        ) : (
+          engineIds.map(eng => {
+            const models = availableEngines[eng] ?? [];
+            const isActive = eng === engine;
+            return (
+              <div key={eng}>
                 <button
-                  key={m}
-                  onClick={() => selectModel(eng, m)}
+                  onClick={() => selectEngine(eng)}
                   className={cn(
-                    'w-full text-left px-3 py-0.5 rounded text-[11px] font-mono transition-colors',
-                    eng === engine && m === model
-                      ? 'bg-primary/15 text-primary'
-                      : 'text-on-surface-variant/70 hover:bg-white/5',
+                    'w-full text-left px-2 py-1 rounded text-[11px] font-semibold uppercase tracking-wide transition-colors',
+                    isActive ? 'text-primary' : 'text-on-surface-variant/60 hover:text-on-surface-variant',
                   )}
                 >
-                  {m}
+                  {eng}
                 </button>
-              ))}
-            </div>
-          );
-        })}
+                {models.map(m => (
+                  <button
+                    key={m}
+                    onClick={() => selectModel(eng, m)}
+                    className={cn(
+                      'w-full text-left px-3 py-0.5 rounded text-[11px] font-mono transition-colors',
+                      eng === engine && m === model
+                        ? 'bg-primary/15 text-primary'
+                        : 'text-on-surface-variant/70 hover:bg-white/5',
+                    )}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            );
+          })
+        )}
       </PopoverContent>
     </Popover>
   );
@@ -266,12 +274,10 @@ export function InputArea({ overrideConversationId, compact }: { overrideConvers
   const cmdMatch = input.match(/^!(\S*)$/);
   const showCmdPalette = !!cmdMatch;
   const cmdQuery = cmdMatch?.[1] ?? '';
-  const filteredCmds = useMemo(
-    () => COMMANDS.filter(c => c.name.includes(cmdQuery.toLowerCase())),
-    [cmdQuery],
-  );
 
-  const handleCmdSelect = useCallback((cmd: Command) => {
+  const filteredCmds = COMMANDS.filter(c => c.name.includes(cmdQuery.toLowerCase()));
+
+  const handleCmdSelect = useCallback((cmd: CmdDef) => {
     setInput(cmd.insert);
     setCmdIndex(0);
     if (cmd.immediate) {

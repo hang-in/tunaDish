@@ -13,12 +13,18 @@ import { useContextStore } from '@/store/contextStore';
 export function useConvSettings(convId: string | null): ConvSettings & { availableEngines: Record<string, string[]> } {
   const conv = useChatStore(s => convId ? s.conversations[convId] : null);
   const ctx = useContextStore(s => s.projectContext);
+  const globalEngineList = useContextStore(s => s.engineList);
+
+  // availableEngines: project.context 응답 → engine.list 응답 순으로 폴백
+  const availableEngines = Object.keys(ctx?.availableEngines ?? {}).length > 0
+    ? ctx!.availableEngines
+    : globalEngineList;
 
   return {
-    engine: conv?.engine ?? ctx?.engine ?? 'claude',
+    engine: conv?.engine ?? ctx?.engine ?? '',
     model: conv?.model ?? ctx?.model,
     persona: conv?.persona ?? ctx?.persona,
-    triggerMode: conv?.triggerMode ?? ctx?.triggerMode ?? 'always',
-    availableEngines: ctx?.availableEngines ?? {},
+    triggerMode: conv?.triggerMode ?? ctx?.triggerMode ?? '',
+    availableEngines,
   };
 }

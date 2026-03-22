@@ -62,11 +62,11 @@ pub fn run() {
             open_branch_window,
             close_branch_window
         ])
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(target_os = "linux")]
             {
-                if let Some(window) = app.get_webview_window("main") {
-                    if let Some(icon) = app.default_window_icon() {
+                if let Some(window) = _app.get_webview_window("main") {
+                    if let Some(icon) = _app.default_window_icon() {
                         let _ = window.set_icon(icon.clone());
                     }
                 }

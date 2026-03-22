@@ -56,6 +56,8 @@ class WebSocketClient {
       this.retryDelay = 3000;
       useSystemStore.getState().setConnected(true);
       this.startHeartbeat();
+      // 연결 직후 엔진/모델 목록 조회 (프로젝트 무관)
+      this.listEngines();
     };
 
     this.ws.onerror = () => {

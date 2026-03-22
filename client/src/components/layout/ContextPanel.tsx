@@ -4,6 +4,11 @@ import { useChatStore } from '@/store/chatStore';
 import { wsClient } from '@/lib/wsClient';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
 import {
   Folder,
   Lightning,
@@ -24,37 +29,13 @@ import {
   CircleNotch,
 } from '@phosphor-icons/react';
 
-// --- Tab buttons ---
-const TABS: { key: ContextTab; label: string }[] = [
+// --- Tab keys ---
+const TAB_KEYS: { key: ContextTab; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'memory', label: 'Memory' },
   { key: 'branches', label: 'Branches' },
   { key: 'code', label: 'Code' },
 ];
-
-function TabBar() {
-  const activeTab = useContextStore(s => s.activeTab);
-  const setTab = useContextStore(s => s.setActiveTab);
-
-  return (
-    <div className="flex border-b border-outline-variant/30">
-      {TABS.map(t => (
-        <button
-          key={t.key}
-          onClick={() => setTab(t.key)}
-          className={cn(
-            'flex-1 py-2 text-[11px] font-semibold uppercase tracking-wider transition-colors',
-            activeTab === t.key
-              ? 'text-primary border-b-2 border-primary'
-              : 'text-on-surface-variant/50 hover:text-on-surface-variant/80',
-          )}
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 // --- Overview Tab ---
 function OverviewTab() {
@@ -213,7 +194,7 @@ function CodeStructureSection() {
   return (
     <section>
       <SectionLabel icon={<Code size={12} />} label={`Code Structure (${files.length} files)`} />
-      <div className="space-y-0.5 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-surface-container-high scrollbar-track-transparent">
+      <ScrollArea className="max-h-48"><div className="space-y-0.5">
         {files.map(f => (
           <div key={f.path}>
             <button
@@ -232,7 +213,7 @@ function CodeStructureSection() {
             )}
           </div>
         ))}
-      </div>
+      </div></ScrollArea>
     </section>
   );
 }
@@ -302,36 +283,40 @@ function MemoryTab() {
 // --- Delete Confirm Dialog ---
 function DeleteConfirmDialog({
   branchLabel,
+  open,
   onConfirm,
   onCancel,
 }: {
   branchLabel: string;
+  open: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onClick={onCancel}>
-      <div className="bg-[#1a1a1a] border border-outline-variant/30 rounded-lg p-4 w-72 space-y-3" onClick={e => e.stopPropagation()}>
-        <div className="text-[13px] font-semibold text-on-surface">브랜치 삭제</div>
-        <div className="text-[11px] text-on-surface-variant/70">
-          <span className="font-medium text-on-surface">{branchLabel}</span> 브랜치를 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다.
-        </div>
+    <Dialog open={open} onOpenChange={v => { if (!v) onCancel(); }}>
+      <DialogContent showCloseButton={false} className="bg-[#1a1a1a] border-outline-variant/30 w-72 p-4 gap-3">
+        <DialogHeader>
+          <DialogTitle className="text-[13px]">브랜치 삭제</DialogTitle>
+          <DialogDescription className="text-[11px] text-on-surface-variant/70">
+            <span className="font-medium text-on-surface">{branchLabel}</span> 브랜치를 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다.
+          </DialogDescription>
+        </DialogHeader>
         <div className="flex gap-2 pt-1">
-          <button
-            onClick={onCancel}
-            className="flex-1 px-3 py-1.5 rounded-md text-[11px] font-medium bg-white/5 text-on-surface-variant/60 hover:bg-white/10 transition-colors"
+          <DialogClose
+            render={<Button variant="ghost" className="flex-1 px-3 py-1.5 text-[11px] font-medium bg-white/5 text-on-surface-variant/60 hover:bg-white/10" />}
           >
             취소
-          </button>
-          <button
+          </DialogClose>
+          <Button
+            variant="ghost"
             onClick={onConfirm}
-            className="flex-1 px-3 py-1.5 rounded-md text-[11px] font-medium bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
+            className="flex-1 px-3 py-1.5 text-[11px] font-medium bg-red-500/15 text-red-400 hover:bg-red-500/25"
           >
             삭제
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -424,13 +409,12 @@ function BranchesTab() {
       )}
 
       {/* Delete confirmation */}
-      {deleteTarget && (
-        <DeleteConfirmDialog
-          branchLabel={deleteTarget.label}
-          onConfirm={handleDeleteConfirm}
-          onCancel={() => setDeleteTarget(null)}
-        />
-      )}
+      <DeleteConfirmDialog
+        branchLabel={deleteTarget?.label ?? ''}
+        open={!!deleteTarget}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
@@ -484,14 +468,14 @@ function CodeSearchTab() {
       {/* Search input */}
       <div className="p-3 border-b border-outline-variant/20">
         <div className="relative">
-          <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant/40" />
-          <input
+          <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant/40 z-10" />
+          <Input
             type="text"
             value={query}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             placeholder="코드 검색..."
-            className="w-full pl-8 pr-3 py-1.5 rounded-md bg-white/5 border border-outline-variant/20 text-[12px] text-on-surface placeholder:text-on-surface-variant/30 focus:outline-none focus:border-primary/50"
+            className="h-7 pl-8 pr-8 bg-white/5 border-outline-variant/20 text-[12px] text-on-surface placeholder:text-on-surface-variant/30 focus-visible:border-primary/50 focus-visible:ring-0"
           />
           {loading && (
             <CircleNotch size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-primary animate-spin" />
@@ -500,7 +484,7 @@ function CodeSearchTab() {
       </div>
 
       {/* Results */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-surface-container-high scrollbar-track-transparent">
+      <ScrollArea className="flex-1">
         {searchResults?.results && searchResults.results.length > 0 ? (
           <div className="p-2 space-y-0.5">
             <div className="px-1 pb-2 text-[10px] text-on-surface-variant/30">
@@ -522,7 +506,7 @@ function CodeSearchTab() {
             검색어를 입력하세요.
           </div>
         )}
-      </div>
+      </ScrollArea>
     </div>
   );
 }
@@ -713,15 +697,38 @@ export function ContextPanel() {
       </div>
 
       {/* Tabs */}
-      <TabBar />
+      <Tabs
+        value={activeTab}
+        onValueChange={v => useContextStore.getState().setActiveTab(v as ContextTab)}
+        className="flex flex-col flex-1 min-h-0 gap-0"
+      >
+        <TabsList variant="line" className="w-full shrink-0 border-b border-outline-variant/30 rounded-none bg-transparent h-auto p-0">
+          {TAB_KEYS.map(t => (
+            <TabsTrigger
+              key={t.key}
+              value={t.key}
+              className="flex-1 py-2 text-[11px] font-semibold uppercase tracking-wider rounded-none border-0 h-auto
+                text-on-surface-variant/50 hover:text-on-surface-variant/80
+                data-active:text-primary data-active:shadow-none"
+            >
+              {t.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-surface-container-high scrollbar-track-transparent">
-        {activeTab === 'overview' && <OverviewTab />}
-        {activeTab === 'memory' && <MemoryTab />}
-        {activeTab === 'branches' && <BranchesTab />}
-        {activeTab === 'code' && <CodeSearchTab />}
-      </div>
+        <TabsContent value="overview" className="flex-1 min-h-0">
+          <ScrollArea className="h-full"><OverviewTab /></ScrollArea>
+        </TabsContent>
+        <TabsContent value="memory" className="flex-1 min-h-0">
+          <ScrollArea className="h-full"><MemoryTab /></ScrollArea>
+        </TabsContent>
+        <TabsContent value="branches" className="flex-1 min-h-0">
+          <ScrollArea className="h-full"><BranchesTab /></ScrollArea>
+        </TabsContent>
+        <TabsContent value="code" className="flex-1 min-h-0">
+          <CodeSearchTab />
+        </TabsContent>
+      </Tabs>
     </aside>
   );
 }

@@ -4,6 +4,9 @@ import { useContextStore } from '@/store/contextStore';
 import { wsClient } from '@/lib/wsClient';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import {
   Plus,
   GearSix,
@@ -21,7 +24,7 @@ import {
 } from '@phosphor-icons/react';
 import { SidebarTree } from './SidebarTree';
 
-// ── Collapsible sub-section (ContextMemorySection용으로 유지) ────
+// ── Collapsible sub-section (ContextMemorySection용) ────
 function SubSection({
   title,
   icon,
@@ -37,11 +40,8 @@ function SubSection({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="mb-1">
-      <div
-        className="flex items-center justify-between pl-[26px] pr-2 py-1 cursor-pointer group"
-        onClick={() => setOpen(o => !o)}
-      >
+    <Collapsible open={open} onOpenChange={setOpen} className="mb-1">
+      <CollapsibleTrigger className="flex items-center justify-between w-full pl-[26px] pr-2 py-1 cursor-pointer group">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-on-surface-variant/40 group-hover:text-on-surface-variant/60 transition-colors">{icon}</span>
           <span className="text-[10px] font-semibold tracking-wider text-on-surface-variant/40 uppercase group-hover:text-on-surface-variant/60 transition-colors">
@@ -57,9 +57,11 @@ function SubSection({
             : <CaretRight size={9} className="text-on-surface-variant/25 group-hover:text-on-surface-variant/50" />
           }
         </div>
-      </div>
-      {open && <nav className="space-y-px">{children}</nav>}
-    </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <nav className="space-y-px">{children}</nav>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -199,13 +201,13 @@ export function Sidebar() {
 
       {/* Search */}
       <div className="relative mb-3 px-1">
-        <MagnifyingGlass size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/30" />
-        <input
+        <MagnifyingGlass size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/30 z-10" />
+        <Input
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search..."
-          className="w-full bg-white/5 border-none rounded-md text-[11px] pl-7 pr-2 py-1.5 text-on-surface placeholder:text-on-surface-variant/30 focus:outline-none focus:ring-1 focus:ring-primary/30"
+          className="h-7 bg-white/5 border-none text-[11px] pl-7 pr-2 text-on-surface placeholder:text-on-surface-variant/30 focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:border-none"
         />
       </div>
 
@@ -220,7 +222,7 @@ export function Sidebar() {
       </button>
 
       {/* Tree */}
-      <div className="flex-grow overflow-hidden flex flex-col min-h-0">
+      <ScrollArea className="flex-grow min-h-0">
         {projects.length === 0 ? (
           <div className="px-2 py-6 text-[11px] text-on-surface-variant/30 text-center">
             {isConnected ? 'Loading...' : '연결 안됨'}
@@ -228,7 +230,7 @@ export function Sidebar() {
         ) : (
           <SidebarTree searchTerm={search} />
         )}
-      </div>
+      </ScrollArea>
 
       {/* Context & Memory (bottom section) */}
       <ContextMemorySection />
