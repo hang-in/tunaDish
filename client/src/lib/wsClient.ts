@@ -6,6 +6,28 @@ import { contextLoadedConvs } from '@/lib/contextCache';
 
 type RequestParams = Record<string, unknown>;
 
+interface PendingRequest {
+  resolve: (result: unknown) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+const DEFAULT_WS_URL = 'ws://127.0.0.1:8765';
+const RPC_TIMEOUT_MS = 30_000;
+
+function resolveWsUrl(): string {
+  // 1. window.__TUNADISH_WS_URL__ (Tauri inject 등)
+  const win = globalThis as Record<string, unknown>;
+  if (typeof win.__TUNADISH_WS_URL__ === 'string') return win.__TUNADISH_WS_URL__;
+  // 2. localStorage 설정
+  try {
+    const stored = localStorage.getItem('tunadish:wsUrl');
+    if (stored) return stored;
+  } catch { /* ignore */ }
+  // 3. 기본값
+  return DEFAULT_WS_URL;
+}
+
 class WebSocketClient {
   private ws: WebSocket | null = null;
   private url: string;
@@ -14,9 +36,11 @@ class WebSocketClient {
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pongTimeout: ReturnType<typeof setTimeout> | null = null;
   private awaitingPong = false;
+  private nextId = 1;
+  private pending = new Map<number, PendingRequest>();
 
-  constructor(url: string = 'ws://127.0.0.1:8765') {
-    this.url = url;
+  constructor(url?: string) {
+    this.url = url ?? resolveWsUrl();
   }
 
   connect() {
@@ -42,6 +66,22 @@ class WebSocketClient {
           if (this.pongTimeout) { clearTimeout(this.pongTimeout); this.pongTimeout = null; }
           return;
         }
+        // JSON-RPC 2.0 response: {jsonrpc, id, result/error}
+        if (typeof data.id === 'number' && this.pending.has(data.id)) {
+          const req = this.pending.get(data.id)!;
+          this.pending.delete(data.id);
+          clearTimeout(req.timer);
+          if (data.error) {
+            req.reject(new Error(data.error.message ?? JSON.stringify(data.error)));
+          } else {
+            req.resolve(data.result);
+          }
+          // 표준 response에도 notification 파이프라인으로 전달 (UI 반영용)
+          if (data.result && data.method) {
+            this.handleNotification({ method: data.method, params: data.result });
+          }
+          return;
+        }
         this.handleNotification(data);
       } catch (err) {
         console.error('Failed to parse WS message', err);
@@ -50,6 +90,7 @@ class WebSocketClient {
 
     this.ws.onclose = () => {
       this.stopHeartbeat();
+      this.rejectAllPending('WebSocket closed');
       useSystemStore.getState().setConnected(false);
       if (this.retryTimer) clearTimeout(this.retryTimer);
       this.retryTimer = setTimeout(() => this.connect(), this.retryDelay);
@@ -78,11 +119,45 @@ class WebSocketClient {
     this.awaitingPong = false;
   }
 
-  async sendRpc(method: string, params: RequestParams = {}): Promise<void> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error('WebSocket is not connected');
+  private rejectAllPending(reason: string) {
+    for (const [id, req] of this.pending) {
+      clearTimeout(req.timer);
+      req.reject(new Error(reason));
+      this.pending.delete(id);
     }
-    this.ws.send(JSON.stringify({ method, params }));
+  }
+
+  /** WS URL 변경 (reconnect 필요) */
+  setUrl(url: string) {
+    this.url = url;
+    try { localStorage.setItem('tunadish:wsUrl', url); } catch { /* ignore */ }
+  }
+
+  getUrl(): string {
+    return this.url;
+  }
+
+  /**
+   * JSON-RPC 2.0 request 전송.
+   * 서버가 표준 response({id, result/error})를 반환하면 Promise가 resolve/reject.
+   * 서버가 notification만 보내면(현재 구조) Promise는 timeout 후 resolve(undefined).
+   */
+  sendRpc(method: string, params: RequestParams = {}): Promise<unknown> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error('WebSocket is not connected'));
+    }
+    const id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (this.pending.delete(id)) {
+          // 현재 서버는 notification 방식이므로 timeout ≠ 에러.
+          // 표준 response 전환 전까지 silent resolve.
+          resolve(undefined);
+        }
+      }, RPC_TIMEOUT_MS);
+      this.pending.set(id, { resolve, reject, timer });
+      this.ws!.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }));
+    });
   }
 
   searchCode(query: string, project: string, lang?: string) {

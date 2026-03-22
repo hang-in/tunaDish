@@ -35,7 +35,7 @@ tunapi/               # 별도 레포 — 백엔드 (transport 포함)
       └─ transport.py
 ```
 
-> **참고**: `transport/` 디렉토리는 tunapi로 이전됨. 백업: `transport.bak/` (정상 동작 확인 후 삭제)
+> **참고**: `transport/` 디렉토리는 tunapi로 이전 완료됨 (e2e 검증 통과, 백업 삭제됨)
 
 ## 핵심 문서
 
@@ -44,9 +44,20 @@ tunapi/               # 별도 레포 — 백엔드 (transport 포함)
 
 ## 현재 단계
 
-MVP Phase 1 완료 (Sprint 0~6). Sprint 7 (안정화 & 기술 부채 해소) 진입 예정.
+Sprint 7 (안정화 & 기술 부채 해소) 진행 중.
 - `docs/development_plan.md` 6절: Sprint 7 상세 플랜
-- 최우선 블로커: e2e 검증 파이프라인 구축 (tunapi CLI 로딩 이슈)
+
+### 완료된 Sprint 7 항목 (클라이언트)
+- e2e 검증: tunapi transport 정상 연결 확인 (project.list, conversation.list 동작)
+- JSON-RPC 2.0 정합성: 클라이언트에 request id + pending map 구현
+- 메시지 순서 보장: chatStore 이미 배열 기반 (추가 작업 불필요)
+- WS URL 설정 가능화: `__TUNADISH_WS_URL__`, `localStorage`, 기본값 폴백
+
+### 남은 Sprint 7 항목
+- JSON-RPC 2.0 서버 측: tunapi에서 request id 기반 response 반환 필요
+- 실행 타임아웃: tunapi `_execute_run`에 `anyio.fail_after` 적용 필요
+- WS 멀티클라이언트: tunapi 측 `_connections` set + broadcast 구현 필요
+- `transport.bak/` 삭제 완료 (2026-03-22)
 
 ## tunapi 참조
 
