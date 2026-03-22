@@ -6,7 +6,6 @@ import { useConvSettings } from '@/lib/useConvSettings';
 import { wsClient } from '@/lib/wsClient';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { Command, CommandList, CommandGroup, CommandItem } from '@/components/ui/command';
 import {
   PaperPlaneRight,
   Stop,
@@ -57,29 +56,24 @@ function CommandPalette({ query, onSelect, selectedIndex }: {
   if (filtered.length === 0) return null;
 
   return (
-    <div className="absolute bottom-full left-0 right-0 mb-1 z-20">
-      <Command
-        className="bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl"
-        shouldFilter={false}
-      >
-        <CommandList>
-          <CommandGroup heading="Commands" className="[&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-on-surface-variant/40 [&_[cmdk-group-heading]]:border-b [&_[cmdk-group-heading]]:border-white/5">
-            {filtered.map((cmd, i) => (
-              <CommandItem
-                key={cmd.name}
-                value={cmd.name}
-                onSelect={() => onSelect(cmd)}
-                data-selected={i === selectedIndex % filtered.length || undefined}
-                className="flex items-center gap-2.5 px-3 py-1.5 text-on-surface-variant/70 data-selected:bg-primary/15 data-selected:text-on-surface rounded-none"
-              >
-                {cmd.icon}
-                <span className="text-[12px] font-medium">!{cmd.name}</span>
-                <span className="text-[11px] text-on-surface-variant/40 ml-auto">{cmd.desc}</span>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        </CommandList>
-      </Command>
+    <div className="absolute bottom-full left-0 mb-1 mx-0 w-full max-w-sm bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl overflow-hidden z-20">
+      <div className="px-3 py-1.5 border-b border-white/5 text-[10px] text-on-surface-variant/40 font-semibold uppercase tracking-wider">Commands</div>
+      {filtered.map((cmd, i) => (
+        <button
+          key={cmd.name}
+          onMouseDown={e => { e.preventDefault(); onSelect(cmd); }}
+          className={cn(
+            'flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors',
+            i === selectedIndex % filtered.length
+              ? 'bg-white/15 text-on-surface'
+              : 'text-on-surface-variant/70 hover:bg-white/5',
+          )}
+        >
+          {cmd.icon}
+          <span className="text-[12px] font-medium">!{cmd.name}</span>
+          <span className="text-[11px] text-on-surface-variant/40 ml-auto">{cmd.desc}</span>
+        </button>
+      ))}
     </div>
   );
 }
