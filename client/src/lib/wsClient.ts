@@ -228,7 +228,12 @@ class WebSocketClient {
     switch (method) {
       case 'message.new': {
         const ref = params.ref as { channel_id: string; message_id: string };
-        chat.addMessage(ref, params.message as { text: string });
+        console.log('[message.new]', { channel_id: ref.channel_id, message_id: ref.message_id, text: (params.message as { text: string }).text?.slice(0, 80) });
+        chat.addMessage(ref, params.message as { text: string }, {
+          engine: params.engine as string | undefined,
+          model: params.model as string | undefined,
+          persona: params.persona as string | undefined,
+        });
         // active run이 없는 채널의 메시지는 즉시 done 처리 (브랜치 context summary 등)
         const channelRun = run.activeRuns[ref.channel_id];
         if (!channelRun || channelRun === 'idle') {
@@ -286,13 +291,16 @@ class WebSocketClient {
         const branchId = params.branch_id as string | undefined;
         // branch history는 branch:${branch_id} 키로 저장
         const historyKey = branchId ? `branch:${branchId}` : convId;
-        const raw = params.messages as Array<{ role: string; content: string; timestamp: string }>;
+        const raw = params.messages as Array<{ role: string; content: string; timestamp: string; engine?: string; model?: string; persona?: string }>;
         const msgs = raw.map((m, i) => ({
           id: `hist-${i}`,
           role: m.role as 'user' | 'assistant',
           content: m.content,
           timestamp: new Date(m.timestamp).getTime(),
           status: 'done' as const,
+          engine: m.engine,
+          model: m.model,
+          persona: m.persona,
         }));
         chat.setHistory(historyKey, msgs);
         break;
@@ -356,7 +364,7 @@ class WebSocketClient {
           available_engines: Record<string, string[]>;
           memory_entries: Array<{ id: string; type: string; title: string; content: string; source: string; tags: string[]; timestamp: number }>;
           active_branches: Array<{ name: string; status: string; description: string; discussion_count: number }>;
-          conv_branches: Array<{ id: string; label: string; status: string; git_branch?: string; parent_branch_id?: string; session_id?: string }>;
+          conv_branches: Array<{ id: string; label: string; status: string; git_branch?: string; parent_branch_id?: string; session_id?: string; checkpoint_id?: string }>;
           pending_review_count: number;
           recent_discussions: Array<{ id: string; topic: string; status: string; participants: string[] }>;
           markdown: string;
@@ -377,7 +385,7 @@ class WebSocketClient {
           })),
           convBranches: raw.conv_branches.map(b => ({
             id: b.id, label: b.label, status: b.status as ConversationBranch['status'],
-            gitBranch: b.git_branch, parentBranchId: b.parent_branch_id,
+            gitBranch: b.git_branch, parentBranchId: b.parent_branch_id, checkpointId: b.checkpoint_id,
             rtSessionId: b.session_id,
           })),
           pendingReviewCount: raw.pending_review_count,
@@ -405,12 +413,12 @@ class WebSocketClient {
         const raw = params as {
           project?: string;
           git_branches: Array<{ name: string; status: string; description: string; parent_branch?: string; linked_entry_count: number; linked_discussion_count: number }>;
-          conv_branches: Array<{ id: string; label: string; status: string; git_branch?: string; parent_branch_id?: string; session_id?: string }>;
+          conv_branches: Array<{ id: string; label: string; status: string; git_branch?: string; parent_branch_id?: string; session_id?: string; checkpoint_id?: string }>;
         };
         const mappedConv = raw.conv_branches.map(b => ({
           id: b.id, label: b.label, status: b.status as ConversationBranch['status'],
           gitBranch: b.git_branch, parentBranchId: b.parent_branch_id,
-          rtSessionId: b.session_id,
+          rtSessionId: b.session_id, checkpointId: b.checkpoint_id,
         }));
         ctxStore.setBranches(
           raw.git_branches.map(b => ({
@@ -460,6 +468,7 @@ class WebSocketClient {
       case 'branch.adopt.result': {
         const branchId = params.branch_id as string;
         const convId = params.conversation_id as string;
+        console.log('[branch.adopted]', { branchId, convId, mainMessages: chat.messages[convId]?.length ?? 0 });
         chat.setActiveBranch(null);
         // Close branch panel on adopt
         if (useSystemStore.getState().branchPanelBranchId === branchId) {

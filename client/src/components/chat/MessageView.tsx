@@ -120,7 +120,7 @@ const proseClasses =
   'prose-th:text-[1em] prose-th:font-semibold prose-th:font-[inherit] prose-th:leading-normal prose-th:px-4 prose-th:py-2 ' +
   'prose-td:text-[1em] prose-td:font-normal prose-td:font-[inherit] prose-td:leading-normal prose-td:px-4 prose-td:py-1.5';
 
-export function MessageView({ msg, isGrouped, isRoleSwitch = false, conversationId }: { msg: ChatMessage; isGrouped: boolean; isRoleSwitch?: boolean; conversationId?: string }) {
+export function MessageView({ msg, isGrouped, isRoleSwitch = false, conversationId, prevAssistantModel }: { msg: ChatMessage; isGrouped: boolean; isRoleSwitch?: boolean; conversationId?: string; prevAssistantModel?: string }) {
   // Branch adopt summary card — special rendering
   if (msg.content.startsWith(ADOPT_SUMMARY_PREFIX)) {
     return <BranchAdoptCard content={msg.content} />;
@@ -138,9 +138,10 @@ export function MessageView({ msg, isGrouped, isRoleSwitch = false, conversation
   const conv = useChatStore(s => resolvedConvId ? s.conversations[resolvedConvId] : null);
   const ctx = useContextStore(s => s.projectContext);
 
-  const rawEngine = conv?.engine || ctx?.engine || 'claude';
+  // 메시지에 기록된 engine/model 우선, 없으면 conversation → projectContext 폴백
+  const rawEngine = msg.engine || conv?.engine || ctx?.engine || 'claude';
   const engine = rawEngine.toLowerCase();
-  const model = conv?.model || ctx?.model;
+  const model = msg.model || conv?.model || ctx?.model;
   const project = ctx?.project || conv?.projectKey;
   const resumeToken = ctx?.resumeToken;
   const shortToken = resumeToken ? resumeToken.slice(0, 8) : null;
@@ -188,7 +189,15 @@ export function MessageView({ msg, isGrouped, isRoleSwitch = false, conversation
                   {AiIcon}
                 </div>
                 <span className="msg-row__name tracking-wide uppercase mt-0.5">{engine}</span>
-                {model && <span className="text-[10px] text-on-surface-variant/50 font-mono mt-0.5">{model}</span>}
+                {model && (() => {
+                  const modelKey = `${engine}/${model}`;
+                  const changed = prevAssistantModel !== undefined && prevAssistantModel !== modelKey;
+                  return (
+                    <span className={`text-[10px] font-mono mt-0.5 ${changed ? 'text-amber-400/80 font-semibold' : 'text-on-surface-variant/50'}`}>
+                      {model}
+                    </span>
+                  );
+                })()}
                 {project && <span className="text-[10px] text-on-surface-variant/50 font-mono mt-0.5">{project}</span>}
                 {shortToken && <span className="text-[10px] text-on-surface-variant/25 font-mono mt-0.5" title={resumeToken ?? undefined}>{shortToken}</span>}
                 <span className="msg-row__time mt-0.5">{timeStr}</span>

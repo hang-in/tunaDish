@@ -128,10 +128,14 @@ export function BranchPanel() {
     }
 
     // 패널 닫힐 때 activeBranch 정리
+    // (다른 브랜치로 전환된 경우에는 null로 초기화하지 않음 → 깜빡임 방지)
     return () => {
-      const current = useChatStore.getState();
-      if (current.activeBranchId === branchId) {
-        current.setActiveBranch(null);
+      const panelStillMine = useSystemStore.getState().branchPanelBranchId === branchId;
+      if (panelStillMine || useSystemStore.getState().branchPanelBranchId === null) {
+        const current = useChatStore.getState();
+        if (current.activeBranchId === branchId) {
+          current.setActiveBranch(null);
+        }
       }
     };
   }, [branchChannel, branchId, convId, projectKey, checkpointId]);
@@ -144,20 +148,14 @@ export function BranchPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Auto-close when switching to a different session or branch cleared
+  // Auto-close when switching to a different main session
   const activeConvId = useChatStore(s => s.activeConversationId);
-  const activeBranchId = useChatStore(s => s.activeBranchId);
   useEffect(() => {
     if (activeConvId && convId && activeConvId !== convId && !activeConvId.startsWith('branch:')) {
       closeBranchPanel();
     }
   }, [activeConvId, convId, closeBranchPanel]);
-  // adopt/delete 등으로 activeBranch가 해제되면 패널 닫기
-  useEffect(() => {
-    if (branchId && activeBranchId === null) {
-      closeBranchPanel();
-    }
-  }, [activeBranchId, branchId, closeBranchPanel]);
+  // adopt/delete로 패널을 닫는 것은 wsClient.ts에서 직접 closeBranchPanel() 호출
 
   // Listen for branch deletion
   useEffect(() => {
@@ -247,7 +245,16 @@ export function BranchPanel() {
               const globalIdx = offset + i;
               const prev = globalIdx > 0 ? messages[globalIdx - 1] : null;
               const roleSwitch = prev !== null && prev.role !== msg.role;
-              return <MessageView key={msg.id} msg={msg} isGrouped={isGrouped(globalIdx)} isRoleSwitch={roleSwitch} conversationId={branchChannel ?? undefined} />;
+              let prevAssistantModel: string | undefined;
+              if (msg.role === 'assistant') {
+                for (let j = globalIdx - 1; j >= 0; j--) {
+                  if (messages[j].role === 'assistant' && messages[j].engine) {
+                    prevAssistantModel = `${messages[j].engine}/${messages[j].model}`;
+                    break;
+                  }
+                }
+              }
+              return <MessageView key={msg.id} msg={msg} isGrouped={isGrouped(globalIdx)} isRoleSwitch={roleSwitch} conversationId={branchChannel ?? undefined} prevAssistantModel={prevAssistantModel} />;
             })}
           </>
         )}

@@ -156,7 +156,17 @@ export function ChatArea() {
             {messages.map((msg, i) => {
               const prev = i > 0 ? messages[i - 1] : null;
               const roleSwitch = prev !== null && prev.role !== msg.role;
-              return <MessageView key={msg.id} msg={msg} isGrouped={isGrouped(i)} isRoleSwitch={roleSwitch} />;
+              // 이전 assistant 메시지의 engine/model (모델 변경 감지용)
+              let prevAssistantModel: string | undefined;
+              if (msg.role === 'assistant') {
+                for (let j = i - 1; j >= 0; j--) {
+                  if (messages[j].role === 'assistant' && messages[j].engine) {
+                    prevAssistantModel = `${messages[j].engine}/${messages[j].model}`;
+                    break;
+                  }
+                }
+              }
+              return <MessageView key={msg.id} msg={msg} isGrouped={isGrouped(i)} isRoleSwitch={roleSwitch} prevAssistantModel={prevAssistantModel} />;
             })}
             <div ref={messagesEndRef} />
           </div>

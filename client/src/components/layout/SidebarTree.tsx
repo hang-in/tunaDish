@@ -367,11 +367,22 @@ function ConvBranchRow({ node }: { node: SidebarNode }) {
     const state = useChatStore.getState();
     const activeId = state.activeConversationId;
     let convId: string | null = null;
+    // 현재 활성 대화가 일반 세션이면 그대로 사용
     if (activeId && !activeId.startsWith('branch:')) convId = activeId;
+    // branch: 채널이면 parentId에서 원본 세션 찾기
     else if (activeId) convId = state.conversations[activeId]?.parentId ?? null;
+    // 둘 다 실패하면 브랜치의 rtSessionId 사용
     convId = convId ?? branch.rtSessionId ?? null;
+    if (!convId) {
+      console.warn('[ConvBranchRow] convId 추론 실패:', {
+        branchId: branch.id, label: branch.label, rtSessionId: branch.rtSessionId,
+        activeId, projectKey: node.projectKey,
+      });
+      return;
+    }
     if (convId && node.projectKey) {
-      openBranchPanel(branch.id, convId, branch.label, node.projectKey);
+      console.log('[ConvBranchRow] openBranchPanel:', { branchId: branch.id, convId, checkpointId: branch.checkpointId });
+      openBranchPanel(branch.id, convId, branch.label, node.projectKey, branch.checkpointId);
     }
   };
 

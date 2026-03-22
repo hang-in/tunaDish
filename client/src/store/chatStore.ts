@@ -81,6 +81,12 @@ export interface ChatMessage {
   status?: 'sending' | 'streaming' | 'done' | 'error';
   /** 완료 시 마지막 progress 내용 (축소 표시용) */
   progressContent?: string;
+  /** 메시지 생성 시 사용된 엔진 (assistant 메시지) */
+  engine?: string;
+  /** 메시지 생성 시 사용된 모델 (assistant 메시지) */
+  model?: string;
+  /** 토론 시 페르소나/역할 */
+  persona?: string;
 }
 
 // Legacy compat for wsClient notification handling
@@ -124,7 +130,7 @@ interface ChatState {
   setHistory: (convId: string, messages: ChatMessage[]) => void;
 
   // Message actions (ordered array)
-  addMessage: (ref: MessageRef, message: RenderedMessage) => void;
+  addMessage: (ref: MessageRef, message: RenderedMessage, meta?: { engine?: string; model?: string; persona?: string }) => void;
   updateMessage: (ref: MessageRef, message: RenderedMessage) => void;
   deleteMessage: (ref: MessageRef) => void;
   pushMessage: (convId: string, msg: ChatMessage) => void;
@@ -252,7 +258,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // --- Message actions (ordered array model) ---
 
-  addMessage: (ref, message) => set((state) => {
+  addMessage: (ref, message, meta) => set((state) => {
     const convId = ref.channel_id;
     const arr = state.messages[convId] ?? [];
     const msg: ChatMessage = {
@@ -261,6 +267,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       content: message.text,
       timestamp: Date.now(),
       status: 'streaming',
+      engine: meta?.engine,
+      model: meta?.model,
+      persona: meta?.persona,
     };
     return { messages: { ...state.messages, [convId]: [...arr, msg] } };
   }),
