@@ -20,6 +20,10 @@ node_modules/
 
 # Tauri
 client/src-tauri/target/
+client/src-tauri/binaries/
+
+# rawq vendor build
+vendor/rawq/target/
 
 # Python
 __pycache__/
@@ -49,3 +53,5 @@ MANIFEST
 # tunapi state
 .tunapi/
 *.lock
+transport.bak/
+transport/

@@ -64,6 +64,37 @@ export interface ProjectContext {
   markdown: string;
 }
 
+// --- rawq Code Search types ---
+
+export interface CodeSearchResult {
+  file: string;
+  lines: [number, number];
+  language: string;
+  scope: string;
+  confidence: number;
+  content: string;
+  context_before?: string;
+  context_after?: string;
+  token_count: number;
+}
+
+export interface CodeSearchResponse {
+  query: string;
+  project: string;
+  available: boolean;
+  results: CodeSearchResult[];
+  query_ms: number;
+  total_tokens: number;
+  error?: string;
+}
+
+export interface CodeMapResponse {
+  project: string;
+  available: boolean;
+  map: Record<string, unknown>;
+  error?: string;
+}
+
 // --- Progress / Status Strip types ---
 
 export interface ActionState {
@@ -84,7 +115,7 @@ export interface ProgressState {
 
 // --- Store ---
 
-export type ContextTab = 'overview' | 'memory' | 'branches';
+export type ContextTab = 'overview' | 'memory' | 'branches' | 'code';
 
 interface ContextState {
   activeTab: ContextTab;
@@ -96,6 +127,13 @@ interface ContextState {
   convBranchesByProject: Record<string, ConversationBranch[]>;
   reviews: ReviewEntry[];
   progress: ProgressState | null;
+  codeSearchResults: CodeSearchResponse | null;
+  codeMap: CodeMapResponse | null;
+  codeSearchLoading: boolean;
+  /** Phase 4: 사용 가능한 엔진+모델 전체 목록 (engine.list 응답) */
+  engineList: Record<string, string[]>;
+  /** Phase 4: 마지막 RPC 결과 (toast 표시용) */
+  lastRpcResult: { method: string; ok: boolean; data: Record<string, unknown> } | null;
 
   setActiveTab: (tab: ContextTab) => void;
   setProjectContext: (ctx: ProjectContext) => void;
@@ -104,6 +142,11 @@ interface ContextState {
   setBranches: (git: GitBranch[], conv: ConversationBranch[]) => void;
   setReviews: (reviews: ReviewEntry[]) => void;
   setProgress: (progress: ProgressState | null) => void;
+  setCodeSearchResults: (results: CodeSearchResponse) => void;
+  setCodeMap: (map: CodeMapResponse) => void;
+  setCodeSearchLoading: (loading: boolean) => void;
+  setEngineList: (engines: Record<string, string[]>) => void;
+  setLastRpcResult: (result: ContextState['lastRpcResult']) => void;
   removeConvBranch: (branchId: string) => void;
   removeMemoryEntry: (entryId: string) => void;
   clear: () => void;
@@ -118,6 +161,11 @@ export const useContextStore = create<ContextState>((set) => ({
   convBranchesByProject: {},
   reviews: [],
   progress: null,
+  codeSearchResults: null,
+  codeMap: null,
+  codeSearchLoading: false,
+  engineList: {},
+  lastRpcResult: null,
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
@@ -146,6 +194,11 @@ export const useContextStore = create<ContextState>((set) => ({
   setBranches: (git, conv) => set({ gitBranches: git, convBranches: conv }),
   setReviews: (reviews) => set({ reviews }),
   setProgress: (progress) => set({ progress }),
+  setCodeSearchResults: (results) => set({ codeSearchResults: results, codeSearchLoading: false }),
+  setCodeMap: (map) => set({ codeMap: map }),
+  setCodeSearchLoading: (loading) => set({ codeSearchLoading: loading }),
+  setEngineList: (engines) => set({ engineList: engines }),
+  setLastRpcResult: (result) => set({ lastRpcResult: result }),
 
   removeMemoryEntry: (entryId) => set((state) => ({
     memoryEntries: state.memoryEntries.filter(e => e.id !== entryId),

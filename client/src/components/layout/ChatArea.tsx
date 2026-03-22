@@ -3,6 +3,7 @@ import { useChatStore, type ChatMessage } from '@/store/chatStore';
 import { useSystemStore } from '@/store/systemStore';
 import { useContextStore } from '@/store/contextStore';
 import { wsClient } from '@/lib/wsClient';
+import { contextLoadedConvs } from '@/lib/contextCache';
 import { Robot } from '@phosphor-icons/react';
 import { MessageView } from '@/components/chat/MessageView';
 import { InputArea } from '@/components/chat/InputArea';
@@ -90,6 +91,7 @@ function StatusStrip() {
 }
 
 // --- Main ---
+
 export function ChatArea() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeConversationId = useChatStore(s => s.activeConversationId);
@@ -109,11 +111,14 @@ export function ChatArea() {
   useEffect(() => {
     if (!activeConversationId || !projectKey || isMockMode || !isConnected) return;
 
-    // project.context 항상 요청 (AgentInfoStrip에 engine/model/token 표시용)
-    wsClient.sendRpc('project.context', {
-      conversation_id: activeConversationId,
-      project: projectKey,
-    });
+    // project.context — 이미 로드된 conv는 재요청 생략
+    if (!contextLoadedConvs.has(activeConversationId)) {
+      wsClient.sendRpc('project.context', {
+        conversation_id: activeConversationId,
+        project: projectKey,
+      });
+      contextLoadedConvs.add(activeConversationId);
+    }
     // history는 아직 로드 안 된 경우만
     if (messagesRaw === undefined) {
       const histParams: Record<string, string> = { conversation_id: activeConversationId };

@@ -1,5 +1,29 @@
 import { create } from 'zustand';
 
+// --- localStorage persistence for last active session ---
+const LS_KEY_PROJECT = 'tunadish:lastProjectKey';
+const LS_KEY_CONV = 'tunadish:lastConvId';
+
+function saveLastActive(projectKey: string | null, convId: string | null) {
+  try {
+    if (projectKey) localStorage.setItem(LS_KEY_PROJECT, projectKey);
+    else localStorage.removeItem(LS_KEY_PROJECT);
+    if (convId) localStorage.setItem(LS_KEY_CONV, convId);
+    else localStorage.removeItem(LS_KEY_CONV);
+  } catch { /* localStorage 비가용 시 무시 */ }
+}
+
+function loadLastActive(): { projectKey: string | null; convId: string | null } {
+  try {
+    return {
+      projectKey: localStorage.getItem(LS_KEY_PROJECT),
+      convId: localStorage.getItem(LS_KEY_CONV),
+    };
+  } catch {
+    return { projectKey: null, convId: null };
+  }
+}
+
 // --- Domain types ---
 
 export interface Project {
@@ -120,8 +144,8 @@ interface ChatState {
 export const useChatStore = create<ChatState>((set, get) => ({
   projects: [],
   conversations: {},
-  activeProjectKey: null,
-  activeConversationId: null,
+  activeProjectKey: loadLastActive().projectKey,
+  activeConversationId: loadLastActive().convId,
   messages: {},
   isMockMode: false,
   activeBranchId: null,
@@ -174,14 +198,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return { conversations: newConvs };
   }),
 
-  setActiveProject: (key) => set({ activeProjectKey: key }),
+  setActiveProject: (key) => {
+    set({ activeProjectKey: key });
+    saveLastActive(key, get().activeConversationId);
+  },
 
   setActiveConversation: (convId) => {
     const conv = get().conversations[convId];
+    const projectKey = conv?.projectKey ?? get().activeProjectKey;
     set({
       activeConversationId: convId,
-      activeProjectKey: conv?.projectKey ?? get().activeProjectKey,
+      activeProjectKey: projectKey,
     });
+    saveLastActive(projectKey, convId);
   },
 
   createConversation: (projectKey, type = 'main', label) => {
