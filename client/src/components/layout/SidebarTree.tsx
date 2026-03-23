@@ -1,23 +1,12 @@
 import { useState, useCallback, useRef } from 'react';
 import { useSidebarTreeData, type SidebarNode } from '@/lib/sidebarTreeData';
 import { useChatStore } from '@/store/chatStore';
-import { useContextStore } from '@/store/contextStore';
 import { useRunStore } from '@/store/runStore';
 import { useSystemStore } from '@/store/systemStore';
 import { wsClient } from '@/lib/wsClient';
 import * as dbSync from '@/lib/dbSync';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogAction,
-  AlertDialogCancel,
-} from '@/components/ui/alert-dialog';
 import {
   GitBranch,
   ChatCircle,
@@ -27,7 +16,6 @@ import {
   CaretDown,
   CaretRight,
   Folder,
-  GitFork,
   Lightning,
   PauseCircle,
   Eye,
@@ -177,8 +165,6 @@ function NodeContent({ node, open, toggle, hasChildren }: {
       return <ProjectRow node={node} open={open} toggle={toggle} />;
     case 'session':
       return <SessionRow node={node} open={open} toggle={toggle} hasChildren={hasChildren} />;
-    case 'convBranch':
-      return <ConvBranchRow node={node} open={open} toggle={toggle} hasChildren={hasChildren} />;
     case 'git-section':
       return <GitSectionRow node={node} open={open} toggle={toggle} />;
     case 'gitBranch':
@@ -190,10 +176,11 @@ function NodeContent({ node, open, toggle, hasChildren }: {
 
 function defaultOpen(node: SidebarNode): boolean {
   switch (node.nodeType) {
-    case 'category': return true;
-    case 'project': return false;
+    case 'category':
+      // DISC(discovered)는 접힌 채로, 나머지(Projects, Chat)는 열린 채로
+      return node.id !== 'cat:disc';
+    case 'project': return true;
     case 'session': return true;
-    case 'convBranch': return true;
     case 'git-section': return false;
     default: return false;
   }
@@ -387,153 +374,6 @@ function SessionRow({ node, open, toggle, hasChildren }: {
       )}
       {isActive && <div className="absolute left-0 top-[20%] bottom-[20%] w-0.5 rounded bg-[var(--channel-unread-indicator)]" />}
     </div>
-  );
-}
-
-// ─── Conv Branch ─────────────────────────────────────────────────
-function ConvBranchRow({ node, open, toggle, hasChildren }: { node: SidebarNode; open: boolean; toggle: () => void; hasChildren: boolean }) {
-  const branch = node.branch;
-  if (!branch) return null;
-
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [editLabel, setEditLabel] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
-  const activeBranchId = useSystemStore(s => s.branchPanelBranchId);
-  const openBranchPanel = useSystemStore(s => s.openBranchPanel);
-  const renameConvBranch = useContextStore(s => s.renameConvBranch);
-  const isActive = activeBranchId === branch.id;
-
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditLabel(branch.label);
-    setEditing(true);
-    setTimeout(() => { inputRef.current?.select(); }, 0);
-  };
-  const commitRename = () => {
-    const trimmed = editLabel.trim();
-    if (trimmed && trimmed !== branch.label) {
-      renameConvBranch(branch.id, trimmed);
-      dbSync.syncBranchLabel(branch.id, trimmed);
-    }
-    setEditing(false);
-  };
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
-    if (e.key === 'Escape') setEditing(false);
-  };
-
-  const handleClick = () => {
-    if (confirmDelete || editing) return;
-    const state = useChatStore.getState();
-    // 브랜치의 부모 세션 ID를 최우선으로 사용
-    let convId: string | null = branch.rtSessionId ?? null;
-    // rtSessionId가 없으면 현재 활성 대화에서 추론
-    if (!convId) {
-      const activeId = state.activeConversationId;
-      if (activeId && !activeId.startsWith('branch:')) convId = activeId;
-      else if (activeId) convId = state.conversations[activeId]?.parentId ?? null;
-    }
-    if (!convId) {
-      console.warn('[ConvBranchRow] convId 추론 실패:', {
-        branchId: branch.id, label: branch.label, rtSessionId: branch.rtSessionId,
-        activeConvId: state.activeConversationId, projectKey: node.projectKey,
-      });
-      return;
-    }
-    if (convId && node.projectKey) {
-      console.log('[ConvBranchRow] openBranchPanel:', { branchId: branch.id, convId, checkpointId: branch.checkpointId });
-      // 부모 대화가 현재 활성 대화가 아니면 전환
-      if (state.activeConversationId !== convId) {
-        state.setActiveConversation(convId);
-      }
-      openBranchPanel(branch.id, convId, branch.label, node.projectKey, branch.checkpointId);
-    }
-  };
-
-  const handleDeleteClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setConfirmDelete(true);
-  };
-
-  const handleDeleteConfirm = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const state = useChatStore.getState();
-    const activeId = state.activeConversationId;
-    let convId: string | null = null;
-    if (activeId && !activeId.startsWith('branch:')) convId = activeId;
-    else if (activeId) convId = state.conversations[activeId]?.parentId ?? null;
-    convId = convId ?? branch.rtSessionId ?? null;
-    if (convId) wsClient.sendRpc('branch.delete', { conversation_id: convId, branch_id: branch.id });
-    setConfirmDelete(false);
-  };
-
-
-  return (
-    <>
-      <div
-        className={cn(
-          'flex items-center gap-1.5 min-w-0 w-full pr-1 text-[11px] rounded cursor-pointer transition-colors group/branch',
-          isActive
-            ? 'bg-violet-500/15 text-violet-300'
-            : 'text-on-surface-variant/60 hover:bg-violet-500/10 hover:text-violet-300',
-        )}
-        onClick={handleClick}
-      >
-        {hasChildren ? (
-          <span onClick={e => { e.stopPropagation(); toggle(); }} className="shrink-0 self-center">
-            <Arrow open={open} />
-          </span>
-        ) : null}
-        <GitFork size={12} className="text-violet-400/60 shrink-0 self-center" />
-        {editing ? (
-          <input
-            ref={inputRef}
-            value={editLabel}
-            onChange={e => setEditLabel(e.target.value)}
-            onBlur={commitRename}
-            onKeyDown={handleKeyDown}
-            onClick={e => e.stopPropagation()}
-            className="flex-1 min-w-0 text-[11px] bg-white/10 border border-violet-400/40 rounded px-1 py-px outline-none text-violet-200"
-            autoFocus
-          />
-        ) : (
-          <span className="truncate flex-1" onDoubleClick={handleDoubleClick}>{branch.label}</span>
-        )}
-        {!editing && (
-          <button type="button" tabIndex={-1} onClick={handleDeleteClick}
-            className="hidden group-hover/branch:flex items-center justify-center size-4 rounded text-on-surface-variant/30 hover:text-red-400 hover:bg-red-400/10 transition-colors shrink-0"
-            title="Delete branch">
-            <Trash size={10} />
-          </button>
-        )}
-        {!editing && !isActive && <span className="text-[9px] text-on-surface-variant/25 shrink-0 group-hover/branch:hidden">Open →</span>}
-      </div>
-
-      <AlertDialog open={confirmDelete} onOpenChange={v => { if (!v) setConfirmDelete(false); }}>
-        <AlertDialogContent size="sm" className="bg-[#1a1a1a] border-outline-variant/30">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-[13px]">브랜치 삭제</AlertDialogTitle>
-            <AlertDialogDescription className="text-[11px] text-on-surface-variant/70">
-              <span className="font-medium text-on-surface">{branch.label}</span> 브랜치를 삭제하시겠습니까?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel variant="ghost" size="sm" className="text-[11px] bg-white/5 text-on-surface-variant/60 hover:bg-white/10">
-              취소
-            </AlertDialogCancel>
-            <AlertDialogAction
-              size="sm"
-              variant="ghost"
-              onClick={handleDeleteConfirm}
-              className="text-[11px] bg-red-500/15 text-red-400 hover:bg-red-500/25"
-            >
-              삭제
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
   );
 }
 

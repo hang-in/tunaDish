@@ -125,8 +125,8 @@ function CodeBlock({ children, node: _node, ...rest }: ComponentPropsWithoutRef<
 
 function ScrollTable({ children, node: _node, ...rest }: ComponentPropsWithoutRef<'table'> & { node?: unknown }) {
   return (
-    <div className="overflow-x-auto my-2 rounded-lg">
-      <table {...rest} className="min-w-full">
+    <div className="overflow-x-auto my-2 rounded-lg max-w-full">
+      <table {...rest} className="w-auto border-collapse whitespace-nowrap [&_td]:whitespace-normal [&_th]:whitespace-nowrap [&_td]:break-words">
         {children}
       </table>
     </div>

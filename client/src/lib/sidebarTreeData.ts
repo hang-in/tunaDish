@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useChatStore, type Conversation } from '@/store/chatStore';
-import { useContextStore, type ConversationBranch, type GitBranch } from '@/store/contextStore';
+import { useContextStore, type GitBranch } from '@/store/contextStore';
 
 // ── Node types ───────────────────────────────────────────────────
 
@@ -9,7 +9,6 @@ export type NodeType =
   | 'separator'      // 카테고리 간 구분선
   | 'project'
   | 'session'
-  | 'convBranch'
   | 'git-section'
   | 'gitBranch';
 
@@ -20,46 +19,11 @@ export interface SidebarNode {
   children?: SidebarNode[];
   // Original data refs
   conv?: Conversation;
-  branch?: ConversationBranch;
   gitBranch?: GitBranch;
   projectKey?: string;
   isDiscovered?: boolean;
   /** category 안에 세션/브랜치 수 표시용 */
   count?: number;
-}
-
-// ── Stable empty array (Zustand selector 안정성) ─────────────────
-const EMPTY_BRANCHES: ConversationBranch[] = [];
-
-/** 플랫 브랜치 리스트 → parentBranchId 기반 트리 구조 변환 */
-function buildBranchTree(branches: ConversationBranch[], projectKey: string): SidebarNode[] {
-  const byId = new Map(branches.map(b => [b.id, b]));
-  const childrenOf = new Map<string | undefined, ConversationBranch[]>();
-
-  for (const b of branches) {
-    // parentBranchId가 같은 프로젝트 브랜치에 있을 때만 자식으로 배치
-    const parentKey = b.parentBranchId && byId.has(b.parentBranchId) ? b.parentBranchId : undefined;
-    const list = childrenOf.get(parentKey) ?? [];
-    list.push(b);
-    childrenOf.set(parentKey, list);
-  }
-
-  function toNodes(parentId: string | undefined): SidebarNode[] {
-    const list = childrenOf.get(parentId) ?? [];
-    return list.map(b => {
-      const sub = toNodes(b.id);
-      return {
-        id: `convbranch:${b.id}`,
-        name: b.label,
-        nodeType: 'convBranch' as const,
-        branch: b,
-        projectKey,
-        children: sub.length > 0 ? sub : undefined,
-      };
-    });
-  }
-
-  return toNodes(undefined);
 }
 
 // ── Hook ─────────────────────────────────────────────────────────
@@ -69,7 +33,6 @@ export function useSidebarTreeData(searchTerm: string): SidebarNode[] {
   const conversations = useChatStore(s => s.conversations);
   const activeProjectKey = useChatStore(s => s.activeProjectKey);
   const gitBranches = useContextStore(s => s.gitBranches);
-  const convBranchesByProject = useContextStore(s => s.convBranchesByProject);
 
   return useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -84,8 +47,12 @@ export function useSidebarTreeData(searchTerm: string): SidebarNode[] {
       const convs = Object.values(conversations)
         .filter(c => c.projectKey === pk && c.type !== 'branch' && !c.id.startsWith('__'))
         .sort((a, b) => {
-          const o: Record<string, number> = { main: 0, discussion: 1 };
-          return (o[a.type] ?? 2) - (o[b.type] ?? 2) || (a.createdAt - b.createdAt);
+          // 1. 삭제 불가 세션(mattermost/slack) 최상위 고정
+          const pinA = (a.source === 'mattermost' || a.source === 'slack') ? 0 : 1;
+          const pinB = (b.source === 'mattermost' || b.source === 'slack') ? 0 : 1;
+          if (pinA !== pinB) return pinA - pinB;
+          // 2. 나머지: 알파벳 오름차순 (A→Z)
+          return a.label.localeCompare(b.label);
         });
 
       // Search filter: project name or session label must match
@@ -97,39 +64,18 @@ export function useSidebarTreeData(searchTerm: string): SidebarNode[] {
 
       const children: SidebarNode[] = [];
 
-      // Conv branches per session (세션별 매핑)
-      const projectBranches = convBranchesByProject[pk] ?? EMPTY_BRANCHES;
-      const activeBranches = projectBranches.filter(b => b.status === 'active');
-
-      // 세션: 프로젝트 직접 자식, conv branches는 세션의 자식으로 배치
+      // 세션만 표시 (브랜치는 하단 탭 패널로 이동)
       const filteredConvs = convs
         .filter(c => !q || c.label.toLowerCase().includes(q) || proj.name.toLowerCase().includes(q));
 
       for (const c of filteredConvs) {
-        // 이 세션에 속하는 브랜치 (rtSessionId로 매핑, 없으면 빈 배열)
-        const sessionBranches = activeBranches.filter(
-          b => b.rtSessionId === c.id,
-        );
-        // parentBranchId 기반 트리 구조 변환
-        const branchChildren = buildBranchTree(sessionBranches, pk);
-
         children.push({
           id: `session:${c.id}`,
           name: c.label,
           nodeType: 'session' as const,
           conv: c,
           projectKey: pk,
-          children: branchChildren.length > 0 ? branchChildren : undefined,
         });
-      }
-
-      // rtSessionId가 없거나 매칭 안 되는 orphan branches → 프로젝트 직접 자식 (트리 구조)
-      const mappedBranchIds = new Set(
-        activeBranches.filter(b => filteredConvs.some(c => c.id === b.rtSessionId)).map(b => b.id),
-      );
-      const orphanBranches = activeBranches.filter(b => !mappedBranchIds.has(b.id));
-      if (orphanBranches.length > 0) {
-        children.push(...buildBranchTree(orphanBranches, pk));
       }
 
       // Git branches (active project only — requires project.context data)
@@ -187,18 +133,18 @@ export function useSidebarTreeData(searchTerm: string): SidebarNode[] {
     const projCat = buildCategory('cat:projects', 'Projects', configured, false);
     if (projCat) result.push(projCat);
 
-    const discCat = buildCategory('cat:disc', 'Disc', discovered, true);
-    if (discCat) {
-      if (result.length > 0) result.push({ id: `sep:${sepIdx++}`, name: '', nodeType: 'separator' });
-      result.push(discCat);
-    }
-
     const chanCat = buildCategory('cat:chat', 'Chat', channels, false);
     if (chanCat) {
       if (result.length > 0) result.push({ id: `sep:${sepIdx++}`, name: '', nodeType: 'separator' });
       result.push(chanCat);
     }
 
+    const discCat = buildCategory('cat:disc', 'Disc', discovered, true);
+    if (discCat) {
+      if (result.length > 0) result.push({ id: `sep:${sepIdx++}`, name: '', nodeType: 'separator' });
+      result.push(discCat);
+    }
+
     return result;
-  }, [projects, conversations, activeProjectKey, gitBranches, convBranchesByProject, searchTerm]);
+  }, [projects, conversations, activeProjectKey, gitBranches, searchTerm]);
 }

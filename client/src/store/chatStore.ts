@@ -164,7 +164,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   projects: [],
   conversations: {},
   activeProjectKey: loadLastActive().projectKey,
-  activeConversationId: loadLastActive().convId,
+  activeConversationId: null,
   messages: {},
   isMockMode: false,
   activeBranchId: null,
@@ -261,16 +261,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setHistory: (convId, serverMessages) => set((state) => {
     const local = state.messages[convId] ?? [];
-    // 서버가 알고 있는 메시지 ID 세트
-    const serverIds = new Set(serverMessages.map(m => m.id));
-    // 로컬에만 존재하는 메시지 보존 (streaming, sending, 또는 서버에 아직 미반영)
-    const localOnly = local.filter(
-      m => !serverIds.has(m.id) && (m.status === 'streaming' || m.status === 'sending' || !m.id.startsWith('hist-')),
+    // 진행 중인 메시지만 보존 (streaming/sending). DB 캐시 메시지는 서버 히스토리로 교체.
+    const inFlight = local.filter(
+      m => (m.status === 'streaming' || m.status === 'sending'),
     );
     return {
       messages: {
         ...state.messages,
-        [convId]: localOnly.length > 0 ? [...serverMessages, ...localOnly] : serverMessages,
+        [convId]: inFlight.length > 0 ? [...serverMessages, ...inFlight] : serverMessages,
       },
     };
   }),

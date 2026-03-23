@@ -22,8 +22,8 @@ export function useConvSettings(convId: string | null): ConvSettings & { availab
 
   return {
     engine: conv?.engine ?? ctx?.engine ?? '',
-    model: conv?.model ?? ctx?.model,
-    persona: conv?.persona ?? ctx?.persona,
+    model: conv?.model ?? ctx?.model ?? undefined,
+    persona: conv?.persona ?? ctx?.persona ?? undefined,
     triggerMode: conv?.triggerMode ?? ctx?.triggerMode ?? '',
     availableEngines,
   };

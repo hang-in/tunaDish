@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSystemStore } from '@/store/systemStore';
 import { useChatStore, type ChatMessage } from '@/store/chatStore';
 import { useContextStore } from '@/store/contextStore';
@@ -177,14 +177,16 @@ export function BranchPanel() {
   // 부모 컨텍스트 + 브랜치 메시지 합산
   const messages = [...parentContext, ...branchMessages];
 
-  // Auto-scroll on new messages (초기 로드 시 즉시, 이후 smooth)
+  // Auto-scroll: 메시지 수가 실제로 증가했을 때만 (배열 참조 변경만으로는 트리거 안 함)
   const prevMsgCountRef = useRef(0);
   useEffect(() => {
     const prevCount = prevMsgCountRef.current;
-    prevMsgCountRef.current = messages.length;
-    const behavior = prevCount === 0 && messages.length > 1 ? 'instant' : 'smooth';
+    const curCount = messages.length;
+    prevMsgCountRef.current = curCount;
+    if (curCount <= prevCount || curCount === 0) return;
+    const behavior = prevCount === 0 && curCount > 1 ? 'instant' : 'smooth';
     messagesEndRef.current?.scrollIntoView({ behavior });
-  }, [messages]);
+  }, [messages.length]);
 
   // Auto-close when switching to a different main session
   const activeConvId = useChatStore(s => s.activeConversationId);
@@ -210,7 +212,7 @@ export function BranchPanel() {
   const breadcrumbKey = useContextStore(s => {
     const allBranches = Object.values(s.convBranchesByProject).flat();
     const trail: string[] = [];
-    let cur = branchId;
+    let cur: string | undefined = branchId ?? undefined;
     const visited = new Set<string>();
     while (cur && !visited.has(cur)) {
       visited.add(cur);
@@ -254,9 +256,12 @@ export function BranchPanel() {
         <button
           onClick={() => {
             if (!convId || !branchId) return;
+            // 중복 클릭 방지: 패널이 닫히기 전까지 재클릭 무시
+            const btn = document.activeElement as HTMLButtonElement;
+            btn?.setAttribute('disabled', 'true');
             wsClient.sendRpc('branch.adopt', { conversation_id: convId, branch_id: branchId });
           }}
-          className="p-1 rounded text-on-surface-variant/40 hover:text-emerald-400 hover:bg-emerald-400/10 transition-colors"
+          className="p-1 rounded text-on-surface-variant/40 hover:text-emerald-400 hover:bg-emerald-400/10 transition-colors disabled:opacity-30 disabled:pointer-events-none"
           title="채택 (main에 병합)"
         >
           <GitMerge size={14} />
@@ -264,9 +269,11 @@ export function BranchPanel() {
         <button
           onClick={() => {
             if (!convId || !branchId) return;
+            const btn = document.activeElement as HTMLButtonElement;
+            btn?.setAttribute('disabled', 'true');
             wsClient.sendRpc('branch.archive', { conversation_id: convId, branch_id: branchId });
           }}
-          className="p-1 rounded text-on-surface-variant/40 hover:text-amber-400 hover:bg-amber-400/10 transition-colors"
+          className="p-1 rounded text-on-surface-variant/40 hover:text-amber-400 hover:bg-amber-400/10 transition-colors disabled:opacity-30 disabled:pointer-events-none"
           title="보관"
         >
           <Archive size={14} />
@@ -281,7 +288,7 @@ export function BranchPanel() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto pt-3 pb-40 space-y-0">
+      <div className="flex-1 overflow-y-auto pt-3 pb-4 space-y-0">
         {messagesRaw === undefined ? (
           <div className="flex items-center justify-center h-32 text-[11px] text-on-surface-variant/30">
             Loading...

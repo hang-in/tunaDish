@@ -173,7 +173,8 @@ class WebSocketClient {
         }
       }, RPC_TIMEOUT_MS);
       this.pending.set(id, { method, params, resolve, reject, timer });
-      this.ws!.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }));
+      const msg = JSON.stringify({ jsonrpc: '2.0', id, method, params });
+      this.ws!.send(msg);
     });
   }
 
@@ -259,7 +260,6 @@ class WebSocketClient {
     switch (method) {
       case 'message.new': {
         const ref = params.ref as { channel_id: string; message_id: string };
-        console.log('[message.new]', { channel_id: ref.channel_id, message_id: ref.message_id, text: (params.message as { text: string }).text?.slice(0, 80) });
         const msgMeta = {
           engine: params.engine as string | undefined,
           model: params.model as string | undefined,
@@ -304,13 +304,20 @@ class WebSocketClient {
         const channelId = branchId ? `branch:${branchId}` : convId;
         run.setRunStatus(convId, status);
         if (branchId) run.setRunStatus(channelId, status);
-        // 실행 완료 시 streaming 메시지를 finalize
+        // 실행 완료 시 streaming 메시지를 finalize + 메모 리스트 갱신
         if (status === 'idle') {
           chat.finalizeStreamingMessages(convId);
           dbSync.syncFinalizeMessages(convId);
           if (branchId) {
             chat.finalizeStreamingMessages(channelId);
             dbSync.syncFinalizeMessages(channelId);
+          }
+          // 메모 저장이 완료되었을 수 있으므로 딜레이 후 context 재요청
+          const conv = chat.conversations[convId];
+          if (conv?.projectKey) {
+            setTimeout(() => {
+              this.sendRpc('project.context', { conversation_id: convId, project: conv.projectKey });
+            }, 2000);
           }
         }
         break;
@@ -371,6 +378,7 @@ class WebSocketClient {
           created_at: c.created_at,
           source: c.source,
         })));
+        // 서버 label을 DB label 컬럼에 저장 (custom_label은 건드리지 않음)
         dbSync.syncConversations(convs.map(c => ({
           id: c.id, projectKey: c.project, label: c.label,
           created_at: c.created_at, source: c.source,
@@ -410,6 +418,13 @@ class WebSocketClient {
               conversation_id: convId,
               project: conv.projectKey,
             });
+            // 메모 저장은 서버에서 비동기 처리 → 딜레이 후 project.context 재요청
+            setTimeout(() => {
+              this.sendRpc('project.context', {
+                conversation_id: convId,
+                project: conv.projectKey,
+              });
+            }, 2000);
             contextLoadedConvs.add(convId);
           }
         }
@@ -504,8 +519,9 @@ class WebSocketClient {
       }
       case 'memory.list.json.result': {
         if (params.error) break;
+        const entries = (params.entries as MemoryEntry[]) ?? [];
         const ctxStore = useContextStore.getState();
-        ctxStore.setMemoryEntries((params.entries as MemoryEntry[]) ?? []);
+        ctxStore.setMemoryEntries(entries);
         break;
       }
       // --- Branch notifications ---
@@ -537,7 +553,6 @@ class WebSocketClient {
       case 'branch.adopt.result': {
         const branchId = params.branch_id as string;
         const convId = params.conversation_id as string;
-        console.log('[branch.adopted]', { branchId, convId, mainMessages: chat.messages[convId]?.length ?? 0 });
         chat.setActiveBranch(null);
         dbSync.syncBranchStatus(branchId, 'adopted');
         // Close branch panel on adopt

@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useEffect, useCallback } from 'react';
+import { memo, useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useChatStore, type ChatMessage } from '@/store/chatStore';
@@ -8,6 +8,7 @@ import {
   CaretDown,
   CaretUp,
   Robot,
+  GitFork,
 } from '@phosphor-icons/react';
 import { MessageActions, MobileContextMenu } from './MessageActions';
 import { InlineEdit } from './MessageActions';
@@ -131,6 +132,13 @@ export const MessageView = memo(function MessageView({ msg, isGrouped, isRoleSwi
   const isDone = msg.status === 'done';
   const isEditing = useChatStore(s => s.editingMsgId === msg.id);
   const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  // 이 메시지에서 분기된 브랜치 목록 (selector 안에서 filter 금지 — 무한루프 방지)
+  const allConvBranches = useContextStore(s => s.convBranchesByProject);
+  const branchesFromHere = useMemo(() => {
+    const all = Object.values(allConvBranches).flat();
+    return all.filter(b => b.checkpointId === msg.id);
+  }, [allConvBranches, msg.id]);
 
   // Get engine/model from conversation settings (prop > active), fallback to projectContext
   const activeConvId = useChatStore(s => s.activeConversationId);
@@ -257,6 +265,27 @@ export const MessageView = memo(function MessageView({ msg, isGrouped, isRoleSwi
               </div>
             )
           )}
+        {/* 이 메시지에서 분기된 브랜치 태그 */}
+        {branchesFromHere.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {branchesFromHere.map(b => (
+              <span
+                key={b.id}
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                  b.status === 'adopted'
+                    ? 'bg-emerald-500/10 text-emerald-400/80 border border-emerald-500/20'
+                    : b.status === 'archived' || b.status === 'discarded'
+                      ? 'bg-white/5 text-on-surface-variant/40 border border-white/5'
+                      : 'bg-violet-500/10 text-violet-300 border border-violet-500/20'
+                }`}
+              >
+                <GitFork size={10} />
+                {b.label}
+                {b.status === 'adopted' && <span className="text-[9px] opacity-60">adopted</span>}
+              </span>
+            ))}
+          </div>
+        )}
         </div>
       </div>
     </div>

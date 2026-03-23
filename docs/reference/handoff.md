@@ -1,65 +1,97 @@
-# Handoff — 2026-03-22 (Sprint 7 진행 중)
+# Handoff — 2026-03-23
+
+## tunadish란?
+
+**코딩하지 않는 IDE — 함께 고민하는 동업자 플랫폼**
+
+- 사용자 + Claude + Codex + Gemini = 최소 4인 팀
+- (인)간지능과 (인)공지능은 같은 "인" — 상호보완 관계
+- 바이브코딩이 아님 — 인간이 거버넌스를 주도, AI가 도메인 지식을 보완
+- 기능 설계 나침반: "맡기는 것인가, 함께 고민하는 것인가?"
 
 ## 아키텍처
 
-tunadish transport(Python 백엔드)는 tunapi 레포 내부에 위치.
+```
+tunadish (Tauri + React)     ← 이 레포 (클라이언트 전용)
+  └─ WebSocket (JSON-RPC 2.0)
+       └─ tunapi (Python 백엔드, 별도 레포)
+            ├─ tunadish transport
+            ├─ mattermost transport
+            └─ runners (claude, codex, gemini)
+```
 
-- **클라이언트**: `tunaDish/client/` (Tauri + React)
-- **백엔드**: `tunapi/src/tunapi/tunadish/`
-- **entry point**: `tunapi.tunadish.backend:BACKEND`
-- **프로토콜**: WebSocket + JSON-RPC 2.0 (클라이언트 id 지원, 서버 표준 response 미적용)
+- **클라이언트**: `tunaDish/client/` (Tauri v2 + React + TypeScript)
+- **백엔드**: `tunapi/src/tunapi/tunadish/` (읽기 전용, 수정 필요 시 tunapi에 요청)
+- **DB**: SQLite (Tauri 로컬), `~/.tunadish/tunadish.db`
+- **상태 관리**: Zustand (chatStore, contextStore, systemStore, runStore)
 
----
+## 현재 상태 (2026-03-23)
 
-## 완료된 작업
+### 완료
+- Sprint 7 안정화 완료
+- Sprint 8: SQLite 영구 저장소 도입
+- 모바일 UI 프레임워크 (Android)
+- 대화 브랜치: 생성, 전환, adopt, archive, delete, 다단계 지원
+- 브랜치 패널 Breadcrumb + 계층 이름 (b1, b1.1, b1.1.2)
+- 세션/브랜치 인라인 이름 변경 (더블클릭)
+- 브랜치 생성 시 이름 입력 다이얼로그
+- 메시지별 engine/model 메타데이터 (클라이언트 Phase 1)
+- conversation-level settings (engine, model, persona, triggerMode)
+- DB custom_label 분리 (서버 이름 / 사용자 이름 독립)
+- 분기 시점 메시지에 브랜치 태그 표시
+- `!cancel` 커맨드 팔레트 추가
+- 타입 에러 전부 해결 (유닛 테스트 126/126 통과)
 
-### e2e 검증
-- tunapi transport 연결 확인: `project.list`, `conversation.list` 정상 응답
-- PID 1980804로 tunadish 프로세스 실행 중
-- Phase 4 RPC (`engine.list`)는 프로세스 재시작 필요 (이전 코드로 실행 중)
+### 알려진 이슈
+- mattermost → tunadish 프로젝트 세션: resume token이 터미널 세션과 충돌 → `!new`로 임시 해결
+- tunapi Phase 2 미완: message.new에 engine/model 첨부, model.set 엔진 라우팅
+- DB 쓰기가 16:40 이후 멈춤 — 마이그레이션 v2 (custom_label) 이후 확인 필요
 
-### 클라이언트 Sprint 7 완료 항목
-| 항목 | 파일 | 내용 |
-|------|------|------|
-| JSON-RPC 2.0 정합성 | `wsClient.ts` | auto-increment `id`, pending map, Promise 기반 sendRpc, onclose 시 reject all |
-| WS URL 설정 가능화 | `wsClient.ts` | `__TUNADISH_WS_URL__` / `localStorage(tunadish:wsUrl)` / 기본값 폴백 |
-| 세션 클릭 랙 최적화 | `contextCache.ts`, `ChatArea.tsx` | project.context 캐싱, command 후 무효화 |
-| 마지막 세션 복원 | `chatStore.ts` | localStorage 기반 |
-| Phase 4 RPC 클라이언트 | `wsClient.ts`, `contextStore.ts` | 7개 메서드 + notification 핸들러 |
-| transport.bak/ 삭제 | — | e2e 검증 후 삭제 완료 |
+### 진행 중 / 계획된 기능
+- **스킬 시스템**: 도메인 지식 패키지, tunadish가 직접 관리 (tunapi는 transport)
+- **git 브랜치 연동**: 대화 브랜치 생성 시 git branch 자동 생성
+- **태그/메모**: 대화 단위 태그 + AI 자동 요약 메모
+- **RT 토론 + 스킬**: 멀티 에이전트 각자 페르소나 + 스킬
 
-### tunapi 측 완료 (`tunapi-completed-status.md`)
-- git rev-parse 비동기화
-- per-session resume token (Step 0~8)
-- Phase 4 RPC 핸들러 7개 (17개 테스트, 1057 전체 통과)
+## 핵심 문서
 
----
-
-## tunapi Sprint 7 남은 작업
-
-`docs/prompts/sprint7/tunapi-sprint7-tasks.md` 참조:
-
-1. **JSON-RPC 2.0 서버 측 response** — request id 기반 `{jsonrpc, id, result/error}` 반환
-2. **실행 타임아웃** — `_execute_run`에 `anyio.fail_after(300s)`
-3. **WS 멀티클라이언트** — `_connections` set + broadcast + orphan run 정리
-4. **WS URL/Port 설정** — `transport_config`에서 host/port 읽기
-5. **코드 정리** — import 중복 등
-
----
-
-## 설계 문서
-
-| 문서 | 상태 |
+| 문서 | 위치 |
 |------|------|
-| `docs/prompts/architecture/per-session-resume-token.md` | tunapi 구현 완료 |
-| `docs/prompts/migration/transport-to-tunapi.md` | 완료 |
-| `docs/prompts/migration/tunapi-completed-status.md` | 완료 보고 |
-| `docs/prompts/sprint7/tunapi-sprint7-tasks.md` | 작업 지시 (미착수) |
+| 제품 요구사항 | `docs/reference/prd.md` |
+| 기술 브리핑 | `docs/reference/briefing.md` |
+| 개발 계획 | `docs/plans/development_plan.md` |
+| 기능 아이디어 | `docs/plans/feature-ideas.md` |
+| 메시지별 모델 설계 | `docs/explanation/per-message-model.md` |
+| CLAUDE.md (작업 규칙) | `CLAUDE.md` |
 
----
+## 레포 구조
 
-## 검증 필요
+```
+tunadish/
+  ├─ client/
+  │   ├─ src/
+  │   │   ├─ components/     ← UI 컴포넌트
+  │   │   │   ├─ chat/       ← MessageView, InputArea, MessageActions
+  │   │   │   ├─ layout/     ← ChatArea, SidebarTree, BranchPanel, ContextPanel
+  │   │   │   └─ ui/         ← shadcn/ui 기본 컴포넌트
+  │   │   ├─ store/          ← Zustand stores
+  │   │   ├─ lib/            ← wsClient, db, dbSync, dbHydrate, sidebarTreeData
+  │   │   └─ index.css
+  │   └─ src-tauri/          ← Tauri 설정 + Rust
+  ├─ vendor/rawq/            ← 코드 검색 엔진 (submodule)
+  ├─ docs/
+  │   ├─ plans/              ← 개발 계획, 기능 아이디어
+  │   ├─ reference/          ← PRD, 브리핑, 핸드오프 (이 파일)
+  │   ├─ explanation/        ← 설계 문서
+  │   └─ prompts/            ← tunapi 요청 프롬프트
+  └─ CLAUDE.md               ← 작업 규칙
+```
 
-1. **rawq 빌드/동작**: `./scripts/build-rawq.sh --release` → 검색 확인
-2. **BranchPanel checkpoint 컨텍스트**: 미검증 상태
-3. **Phase 4 RPC e2e**: tunapi 프로세스 재시작 후 `engine.list` 등 확인
+## 작업 규칙 요약
+
+- 수정 전 관련 파일 전체 읽기
+- 추측 코딩 금지
+- 구현 지시 전 임의 수정 금지
+- 작업 단위 끊어서 타입체크/테스트
+- tunapi 파일 읽기 전용 (수정 필요 시 요청)
+- 앱 재시작을 에이전트가 직접 하지 말 것

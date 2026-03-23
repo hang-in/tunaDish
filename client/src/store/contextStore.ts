@@ -1,5 +1,24 @@
 import { create } from 'zustand';
 
+// --- Dismissed branches (로컬에서 숨긴 브랜치, 서버가 삭제를 거부하는 경우) ---
+const LS_DISMISSED = 'tunadish:dismissedBranches';
+function loadDismissed(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(LS_DISMISSED) ?? '[]')); } catch { return new Set(); }
+}
+function saveDismissed(ids: Set<string>) {
+  try { localStorage.setItem(LS_DISMISSED, JSON.stringify([...ids])); } catch { /* ignore */ }
+}
+export function dismissBranch(branchId: string) {
+  const ids = loadDismissed();
+  ids.add(branchId);
+  saveDismissed(ids);
+}
+function filterDismissed<T extends { id: string }>(branches: T[]): T[] {
+  const ids = loadDismissed();
+  if (ids.size === 0) return branches;
+  return branches.filter(b => !ids.has(b.id));
+}
+
 // --- Context Panel types (from project.context RPC) ---
 
 export interface MemoryEntry {
@@ -173,10 +192,10 @@ export const useContextStore = create<ContextState>((set) => ({
   setProjectContext: (ctx) => set((state) => {
     // 로컬에서 이름을 변경했을 수 있으므로 기존 label 우선
     const existingByProject = new Map((state.convBranchesByProject[ctx.project] ?? []).map(b => [b.id, b]));
-    const mergedBranches = ctx.convBranches.map(b => ({
+    const mergedBranches = filterDismissed(ctx.convBranches.map(b => ({
       ...b,
       label: existingByProject.get(b.id)?.label ?? b.label,
-    }));
+    })));
     return {
       projectContext: ctx,
       memoryEntries: ctx.memoryEntries,
@@ -204,17 +223,18 @@ export const useContextStore = create<ContextState>((set) => ({
         if (!branches.some(b => b.id === ex.id)) merged.push(ex);
       }
     }
+    const filtered = filterDismissed(merged);
     return {
       convBranchesByProject: {
         ...state.convBranchesByProject,
-        [projectKey]: merged,
+        [projectKey]: filtered,
       },
-      ...(state.projectContext?.project === projectKey ? { convBranches: merged } : {}),
+      ...(state.projectContext?.project === projectKey ? { convBranches: filtered } : {}),
     };
   }),
 
   setMemoryEntries: (entries) => set({ memoryEntries: entries }),
-  setBranches: (git, conv) => set({ gitBranches: git, convBranches: conv }),
+  setBranches: (git, conv) => set({ gitBranches: git, convBranches: filterDismissed(conv) }),
   setReviews: (reviews) => set({ reviews }),
   setProgress: (progress) => set({ progress }),
   setCodeSearchResults: (results) => set({ codeSearchResults: results, codeSearchLoading: false }),

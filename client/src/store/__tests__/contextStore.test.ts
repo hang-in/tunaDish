@@ -321,14 +321,14 @@ describe('removeMemoryEntry', () => {
 describe('code search state', () => {
   it('setCodeSearchResults stores results and clears loading', () => {
     store.setState({ codeSearchLoading: true });
-    const results = { query: 'test', results: [], totalTokens: 0 };
+    const results = { query: 'test', project: 'test-proj', available: true, results: [], query_ms: 0, total_tokens: 0 };
     store.getState().setCodeSearchResults(results);
     expect(store.getState().codeSearchResults).toEqual(results);
     expect(store.getState().codeSearchLoading).toBe(false);
   });
 
   it('setCodeMap stores the map', () => {
-    const map = { symbols: [], totalFiles: 0 };
+    const map = { project: 'test-proj', available: true, map: {} };
     store.getState().setCodeMap(map);
     expect(store.getState().codeMap).toEqual(map);
   });
@@ -359,8 +359,8 @@ describe('setEngineList', () => {
 
 describe('setLastRpcResult', () => {
   it('stores and clears RPC result', () => {
-    store.getState().setLastRpcResult({ method: 'test', data: { ok: true } });
-    expect(store.getState().lastRpcResult).toEqual({ method: 'test', data: { ok: true } });
+    store.getState().setLastRpcResult({ method: 'test', ok: true, data: { ok: true } });
+    expect(store.getState().lastRpcResult).toEqual({ method: 'test', ok: true, data: { ok: true } });
     store.getState().setLastRpcResult(null);
     expect(store.getState().lastRpcResult).toBeNull();
   });

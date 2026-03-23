@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useRef, useEffect, useMemo, useCallback } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { useChatStore, type ChatMessage } from '@/store/chatStore';
 import { useSystemStore } from '@/store/systemStore';
@@ -177,13 +177,12 @@ export function ChatArea() {
   }, [hasStreaming]);
 
   // 세션 전환 시 맨 아래로 즉시 이동
-  const [, setAtBottom] = useState(true);
   const prevConvRef = useRef(activeConversationId);
   useEffect(() => {
     if (activeConversationId !== prevConvRef.current) {
       prevConvRef.current = activeConversationId;
       setTimeout(() => {
-        virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'auto' });
+        virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'auto' });
       }, 50);
     }
   }, [activeConversationId]);
@@ -194,8 +193,7 @@ export function ChatArea() {
     const prevCount = prevMsgCountRef.current;
     prevMsgCountRef.current = messages.length;
     if (messages.length > prevCount) {
-      // 새 메시지가 추가되면 항상 하단으로 (사용자가 위로 스크롤하지 않은 경우)
-      virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' });
+      virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'smooth' });
     }
   }, [messages.length]);
 
@@ -226,16 +224,15 @@ export function ChatArea() {
             data={messages}
             itemContent={itemContent}
             followOutput={followOutput}
-            atBottomStateChange={setAtBottom}
             atBottomThreshold={150}
             initialTopMostItemIndex={messages.length - 1}
             overscan={600}
-            increaseViewportBy={{ top: 400, bottom: 400 }}
+            increaseViewportBy={{ top: 400, bottom: 200 }}
             className="flex-1"
             style={{ height: '100%' }}
             components={{
               Header: () => <div className="pt-4" />,
-              Footer: () => <div className="pb-52" />,
+              Footer: () => <div className="pb-4" />,
             }}
           />
         )}

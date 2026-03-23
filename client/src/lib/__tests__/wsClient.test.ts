@@ -120,7 +120,7 @@ beforeEach(async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = wsClient as unknown as { ws: MockWebSocket | null };
   if (client.ws) {
-    client.ws.readyState = WebSocket.CLOSED; // 3
+    (client.ws as any).readyState = WebSocket.CLOSED; // 3
     client.ws = null;
   }
 

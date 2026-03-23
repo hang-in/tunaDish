@@ -109,6 +109,8 @@ interface Migration {
   sql: string;
   /** BEGIN...END 포함 등 별도 실행이 필요한 문장 */
   rawStatements?: string[];
+  /** 실패해도 무시할 문장 (ALTER TABLE ADD COLUMN 등 — 이미 존재 시 에러 무시) */
+  safeStatements?: string[];
 }
 
 const MIGRATIONS: Migration[] = [
@@ -116,6 +118,15 @@ const MIGRATIONS: Migration[] = [
     version: 1,
     sql: SCHEMA_V1 + "INSERT OR IGNORE INTO schema_version (version) VALUES (1);",
     rawStatements: FTS_TRIGGERS,
+  },
+  {
+    version: 2,
+    sql: `INSERT OR IGNORE INTO schema_version (version) VALUES (2);`,
+    // ALTER TABLE ADD COLUMN은 IF NOT EXISTS 미지원 → 개별 try-catch 필요
+    safeStatements: [
+      `ALTER TABLE conversations ADD COLUMN custom_label TEXT`,
+      `ALTER TABLE branches ADD COLUMN custom_label TEXT`,
+    ],
   },
 ];
 
@@ -153,6 +164,12 @@ async function migrate(d: Database): Promise<void> {
 
   for (const m of MIGRATIONS) {
     if (m.version > currentVersion) {
+      // 실패해도 무시할 문장 먼저 실행 (ALTER TABLE ADD COLUMN 등)
+      if (m.safeStatements) {
+        for (const stmt of m.safeStatements) {
+          try { await d.execute(stmt + ';'); } catch { /* 이미 존재 등 — 무시 */ }
+        }
+      }
       // 세미콜론으로 분할 가능한 일반 SQL
       const statements = m.sql
         .split(';')
@@ -250,7 +267,7 @@ export async function deleteConversation(convId: string): Promise<void> {
 export async function updateConvLabel(convId: string, label: string): Promise<void> {
   const d = await initDb();
   await d.execute(
-    `UPDATE conversations SET label = $1, updated_at = unixepoch() WHERE id = $2`,
+    `UPDATE conversations SET custom_label = $1, updated_at = unixepoch() WHERE id = $2`,
     [label, convId],
   );
 }
@@ -281,10 +298,23 @@ export async function loadConversations(projectKey: string): Promise<Array<{
 }>> {
   const d = await initDb();
   return d.select(
-    `SELECT id, project_key as projectKey, label, type, source, created_at as createdAt, engine, model
+    `SELECT id, project_key as projectKey, COALESCE(custom_label, label) as label, type, source, created_at as createdAt, engine, model
      FROM conversations WHERE project_key = $1
      ORDER BY updated_at DESC`,
     [projectKey],
+  );
+}
+
+/** 모든 프로젝트의 대화를 한번에 로드 (hydration용) */
+export async function loadAllConversations(): Promise<Array<{
+  id: string; projectKey: string; label: string; type: string;
+  source: string; createdAt: number; engine?: string; model?: string;
+}>> {
+  const d = await initDb();
+  return d.select(
+    `SELECT id, project_key as projectKey, COALESCE(custom_label, label) as label, type, source, created_at as createdAt, engine, model
+     FROM conversations
+     ORDER BY updated_at DESC`,
   );
 }
 
@@ -371,7 +401,7 @@ export async function upsertBranch(branch: {
 export async function updateBranchLabel(branchId: string, label: string): Promise<void> {
   const d = await initDb();
   await d.execute(
-    `UPDATE branches SET label = $1 WHERE id = $2`,
+    `UPDATE branches SET custom_label = $1 WHERE id = $2`,
     [label, branchId],
   );
 }
@@ -392,7 +422,7 @@ export async function loadBranches(conversationId: string): Promise<Array<{
 }>> {
   const d = await initDb();
   return d.select(
-    `SELECT id, label, status, checkpoint_id as checkpointId, session_id as sessionId,
+    `SELECT id, COALESCE(custom_label, label) as label, status, checkpoint_id as checkpointId, session_id as sessionId,
             git_branch as gitBranch, parent_branch_id as parentBranchId
      FROM branches WHERE conversation_id = $1
      ORDER BY created_at DESC`,

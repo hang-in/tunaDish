@@ -25,8 +25,9 @@ import {
   TreeStructure,
   Gear,
   UserCircle,
-  Eraser,
-  ArrowsClockwise,
+  Plus,
+  BookOpen,
+  Eye,
 } from '@phosphor-icons/react';
 
 // --- Command palette ---
@@ -39,14 +40,20 @@ interface CmdDef {
 }
 
 const COMMANDS: CmdDef[] = [
+  { name: 'help', desc: '커맨드 및 엔진 목록', icon: <MagnifyingGlass size={14} className="text-on-surface-variant/60" />, insert: '!help', immediate: true },
+  { name: 'new', desc: '새 대화 세션 시작', icon: <Plus size={14} className="text-emerald-400" />, insert: '!new', immediate: true },
   { name: 'search', desc: '코드 검색', icon: <MagnifyingGlass size={14} className="text-blue-400" />, insert: '!search ' },
   { name: 'map', desc: '프로젝트 구조 보기', icon: <TreeStructure size={14} className="text-emerald-400" />, insert: '!map ' },
   { name: 'model', desc: '엔진/모델 변경', icon: <Lightning size={14} className="text-primary" />, insert: '!model ' },
-  { name: 'persona', desc: '페르소나 변경', icon: <UserCircle size={14} className="text-violet-400" />, insert: '!persona ' },
+  { name: 'models', desc: '사용 가능한 모델 목록', icon: <Lightning size={14} className="text-primary/60" />, insert: '!models', immediate: true },
+  { name: 'persona', desc: '페르소나 관리', icon: <UserCircle size={14} className="text-violet-400" />, insert: '!persona ' },
   { name: 'trigger', desc: '트리거 모드 변경', icon: <Broadcast size={14} className="text-emerald-400" />, insert: '!trigger ' },
-  { name: 'clear', desc: '대화 기록 초기화', icon: <Eraser size={14} className="text-red-400" />, insert: '!clear', immediate: true },
-  { name: 'refresh', desc: '컨텍스트 새로고침', icon: <ArrowsClockwise size={14} className="text-amber-400" />, insert: '!refresh', immediate: true },
-  { name: 'config', desc: 'WS 연결 설정', icon: <Gear size={14} className="text-on-surface-variant/60" />, insert: '!config ' },
+  { name: 'status', desc: '현재 세션 상태', icon: <Gear size={14} className="text-blue-400" />, insert: '!status', immediate: true },
+  { name: 'project', desc: '프로젝트 바인딩 관리', icon: <TreeStructure size={14} className="text-amber-400" />, insert: '!project ' },
+  { name: 'memory', desc: '프로젝트 메모리 관리', icon: <BookOpen size={14} className="text-violet-400" />, insert: '!memory ' },
+  { name: 'branch', desc: '대화 분기 관리', icon: <GitBranch size={14} className="text-violet-400" />, insert: '!branch ' },
+  { name: 'context', desc: '프로젝트 컨텍스트 표시', icon: <Eye size={14} className="text-amber-400" />, insert: '!context', immediate: true },
+  { name: 'cancel', desc: '실행 중인 작업 취소', icon: <Stop size={14} className="text-red-400" />, insert: '!cancel', immediate: true },
 ];
 
 function CommandPalette({ query, onSelect, selectedIndex }: {
@@ -377,7 +384,7 @@ export function InputArea({ overrideConversationId, compact }: { overrideConvers
   if (!activeConversationId) return null;
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 p-4 pb-8 flex-shrink-0 z-10">
+    <div className="p-4 pb-8 flex-shrink-0 z-10">
 {/* Reply banner */}
       {replyTo && (
         <div className="mb-1.5 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a1a1a]/95 border border-violet-400/20">
@@ -427,9 +434,20 @@ export function InputArea({ overrideConversationId, compact }: { overrideConvers
                 {gitBranch}
               </span>
             )}
-            <button className="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-white/5 hover:bg-white/10 text-on-surface-variant/70 hover:text-on-surface transition-colors cursor-pointer">
-              <GitMerge size={14} weight="bold" className="text-amber-500" />
-              <span className="hidden sm:inline">Merge</span>
+            <button
+              onClick={() => {
+                if (!activeConversationId) return;
+                const msgId = crypto.randomUUID();
+                const ts = Date.now();
+                const text = '커밋해줘';
+                pushMessage(activeConversationId, { id: msgId, role: 'user', content: text, timestamp: ts, status: 'done' });
+                dbSync.syncMessage({ id: msgId, conversationId: activeConversationId, role: 'user', content: text, timestamp: ts, status: 'done' });
+                wsClient.sendRpc('chat.send', { conversation_id: activeConversationId, text });
+              }}
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-white/5 hover:bg-white/10 text-on-surface-variant/70 hover:text-on-surface transition-colors cursor-pointer"
+            >
+              <GitMerge size={14} weight="bold" className="text-emerald-400" />
+              <span className="hidden sm:inline">Commit</span>
             </button>
           </div>
         )}

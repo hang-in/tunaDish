@@ -31,11 +31,8 @@ export async function hydrateFromDb(): Promise<void> {
       })));
     }
 
-    const activeProjectKey = chat.activeProjectKey;
-    if (!activeProjectKey) return;
-
-    // 2. 대화 목록 복원
-    const convs = await db.loadConversations(activeProjectKey);
+    // 2. 모든 프로젝트의 대화 목록 복원 (custom_label 보존)
+    const convs = await db.loadAllConversations();
     if (convs.length > 0) {
       chat.loadConversations(convs.map(c => ({
         id: c.id,
@@ -48,31 +45,14 @@ export async function hydrateFromDb(): Promise<void> {
       })), true);
     }
 
-    // 3. 활성 대화의 메시지 복원
-    const activeConvId = chat.activeConversationId;
-    if (activeConvId) {
-      const msgs = await db.loadMessages(activeConvId);
-      if (msgs.length > 0 && !chat.messages[activeConvId]?.length) {
-        chat.setHistory(activeConvId, msgs.map(m => ({
-          id: m.id,
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-          timestamp: m.timestamp,
-          status: (m.status as 'done' | 'streaming') ?? 'done',
-          engine: m.engine,
-          model: m.model,
-          persona: m.persona,
-        })));
-      }
-    }
-
-    // 4. 브랜치 목록 복원 — 모든 대화 브랜치를 모아서 한 번만 set (루프마다 덮어쓰면 마지막 것만 남음)
+    // 3. 브랜치 목록 복원 — 프로젝트별로 그룹화
     const ctxStore = useContextStore.getState();
-    const allBranches: ConversationBranch[] = [];
+    const branchesByProject = new Map<string, ConversationBranch[]>();
     for (const conv of convs) {
       const branches = await db.loadBranches(conv.id);
       for (const b of branches) {
-        allBranches.push({
+        const list = branchesByProject.get(conv.projectKey) ?? [];
+        list.push({
           id: b.id,
           label: b.label,
           status: b.status as ConversationBranch['status'],
@@ -81,10 +61,11 @@ export async function hydrateFromDb(): Promise<void> {
           gitBranch: b.gitBranch,
           parentBranchId: b.parentBranchId,
         });
+        branchesByProject.set(conv.projectKey, list);
       }
     }
-    if (allBranches.length > 0) {
-      ctxStore.setProjectConvBranches(activeProjectKey, allBranches, true);
+    for (const [pk, branches] of branchesByProject) {
+      ctxStore.setProjectConvBranches(pk, branches, true);
     }
 
     console.log('[dbHydrate] loaded', projects.length, 'projects,', convs.length, 'conversations from SQLite');
