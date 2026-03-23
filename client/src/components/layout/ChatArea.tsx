@@ -1,4 +1,5 @@
-import { useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { useChatStore, type ChatMessage } from '@/store/chatStore';
 import { useSystemStore } from '@/store/systemStore';
 import { useContextStore } from '@/store/contextStore';
@@ -90,10 +91,45 @@ function StatusStrip() {
   );
 }
 
+// --- Pre-computed message metadata ---
+interface MsgMeta {
+  isGrouped: boolean;
+  isRoleSwitch: boolean;
+  prevAssistantModel: string | undefined;
+}
+
+function computeMsgMeta(messages: ChatMessage[]): MsgMeta[] {
+  const meta: MsgMeta[] = [];
+  let lastAssistantModel: string | undefined;
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    const prev = i > 0 ? messages[i - 1] : null;
+
+    const isGrouped = prev !== null &&
+      prev.role === msg.role &&
+      msg.timestamp - prev.timestamp < 5 * 60 * 1000;
+
+    const isRoleSwitch = prev !== null && prev.role !== msg.role;
+
+    meta.push({
+      isGrouped,
+      isRoleSwitch,
+      prevAssistantModel: msg.role === 'assistant' ? lastAssistantModel : undefined,
+    });
+
+    if (msg.role === 'assistant' && msg.engine) {
+      lastAssistantModel = `${msg.engine}/${msg.model}`;
+    }
+  }
+
+  return meta;
+}
+
 // --- Main ---
 
 export function ChatArea() {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const activeConversationId = useChatStore(s => s.activeConversationId);
   const isMockMode = useChatStore(s => s.isMockMode);
   const messagesRaw = useChatStore(s =>
@@ -120,7 +156,6 @@ export function ChatArea() {
       contextLoadedConvs.add(activeConversationId);
     }
     // history 요청: 로컬 캐시가 있더라도 서버에서 최신 데이터를 받아옴
-    // (로컬 캐시는 즉시 표시용, 서버 응답이 오면 setHistory로 덮어쓰기)
     const histParams: Record<string, string> = { conversation_id: activeConversationId };
     const conv = useChatStore.getState().conversations[activeConversationId];
     if (conv?.source && conv.source !== 'tunadish') {
@@ -129,23 +164,53 @@ export function ChatArea() {
     wsClient.sendRpc('conversation.history', histParams);
   }, [activeConversationId, projectKey, isMockMode, isConnected]);
 
-  const prevMsgCountRef = useRef(0);
+  // 메시지 메타데이터 사전 계산 (O(n) 1회, O(n²) → O(n))
+  const msgMeta = useMemo(() => computeMsgMeta(messages), [messages]);
+
+  // Virtuoso: 새 메시지/콘텐츠 추가 시 하단 자동 추적
+  // Virtuoso가 전달하는 실시간 isAtBottom을 사용 (React state보다 정확)
+  const hasStreaming = messages.some(m => m.status === 'streaming');
+  const followOutput = useCallback((isAtBottom: boolean) => {
+    // 스트리밍 중이면 무조건 따라가기, 아니면 하단에 있을 때만
+    if (hasStreaming || isAtBottom) return 'smooth';
+    return false;
+  }, [hasStreaming]);
+
+  // 세션 전환 시 맨 아래로 즉시 이동
+  const [, setAtBottom] = useState(true);
+  const prevConvRef = useRef(activeConversationId);
+  useEffect(() => {
+    if (activeConversationId !== prevConvRef.current) {
+      prevConvRef.current = activeConversationId;
+      setTimeout(() => {
+        virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'auto' });
+      }, 50);
+    }
+  }, [activeConversationId]);
+
+  // 새 메시지 추가 시 강제 스크롤 (followOutput 백업)
+  const prevMsgCountRef = useRef(messages.length);
   useEffect(() => {
     const prevCount = prevMsgCountRef.current;
     prevMsgCountRef.current = messages.length;
-    // 초기 로드(0→N) 시 즉시 스크롤, 이후 새 메시지만 smooth
-    const behavior = prevCount === 0 && messages.length > 1 ? 'instant' : 'smooth';
-    messagesEndRef.current?.scrollIntoView({ behavior });
-  }, [messages]);
+    if (messages.length > prevCount) {
+      // 새 메시지가 추가되면 항상 하단으로 (사용자가 위로 스크롤하지 않은 경우)
+      virtuosoRef.current?.scrollToIndex({ index: 'LAST', behavior: 'smooth' });
+    }
+  }, [messages.length]);
 
-  // Mattermost-style grouping: same role within 5 minutes = grouped
-  const isGrouped = (i: number): boolean => {
-    if (i === 0) return false;
-    const prev = messages[i - 1];
-    const cur = messages[i];
+  // itemContent: useCallback 제거 — messages/msgMeta 변경 시 Virtuoso가 항상 최신 데이터로 렌더링하도록
+  const itemContent = (index: number) => {
+    const msg = messages[index];
+    const meta = msgMeta[index];
+    if (!msg || !meta) return null;
     return (
-      prev.role === cur.role &&
-      cur.timestamp - prev.timestamp < 5 * 60 * 1000
+      <MessageView
+        msg={msg}
+        isGrouped={meta.isGrouped}
+        isRoleSwitch={meta.isRoleSwitch}
+        prevAssistantModel={meta.prevAssistantModel}
+      />
     );
   };
 
@@ -156,24 +221,23 @@ export function ChatArea() {
         {!activeConversationId || messages.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="flex-1 overflow-y-auto pt-4 pb-52 space-y-0">
-            {messages.map((msg, i) => {
-              const prev = i > 0 ? messages[i - 1] : null;
-              const roleSwitch = prev !== null && prev.role !== msg.role;
-              // 이전 assistant 메시지의 engine/model (모델 변경 감지용)
-              let prevAssistantModel: string | undefined;
-              if (msg.role === 'assistant') {
-                for (let j = i - 1; j >= 0; j--) {
-                  if (messages[j].role === 'assistant' && messages[j].engine) {
-                    prevAssistantModel = `${messages[j].engine}/${messages[j].model}`;
-                    break;
-                  }
-                }
-              }
-              return <MessageView key={msg.id} msg={msg} isGrouped={isGrouped(i)} isRoleSwitch={roleSwitch} prevAssistantModel={prevAssistantModel} />;
-            })}
-            <div ref={messagesEndRef} />
-          </div>
+          <Virtuoso
+            ref={virtuosoRef}
+            data={messages}
+            itemContent={itemContent}
+            followOutput={followOutput}
+            atBottomStateChange={setAtBottom}
+            atBottomThreshold={150}
+            initialTopMostItemIndex={messages.length - 1}
+            overscan={600}
+            increaseViewportBy={{ top: 400, bottom: 400 }}
+            className="flex-1"
+            style={{ height: '100%' }}
+            components={{
+              Header: () => <div className="pt-4" />,
+              Footer: () => <div className="pb-52" />,
+            }}
+          />
         )}
         <InputArea />
       </div>

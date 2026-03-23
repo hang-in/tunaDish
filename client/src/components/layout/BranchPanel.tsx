@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useSystemStore } from '@/store/systemStore';
 import { useChatStore, type ChatMessage } from '@/store/chatStore';
 import { useContextStore } from '@/store/contextStore';
@@ -59,16 +59,20 @@ export function BranchPanel() {
   const branchChannel = branchId ? `branch:${branchId}` : null;
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // checkpointId: openBranchPanel에서 전달된 값 우선, 없으면 convBranches에서 조회
+  // checkpointId, parentBranchId: openBranchPanel에서 전달된 값 우선, 없으면 convBranches에서 조회
   const panelCheckpointId = useSystemStore(s => s.branchPanelCheckpointId);
-  const storeCheckpointId = useContextStore(s => {
+  const branchMeta = useContextStore(s => {
     for (const list of Object.values(s.convBranchesByProject)) {
       const found = list.find(b => b.id === branchId);
-      if (found) return found.checkpointId;
+      if (found) return found;
     }
     return undefined;
   });
-  const checkpointId = panelCheckpointId ?? storeCheckpointId;
+  const checkpointId = panelCheckpointId ?? branchMeta?.checkpointId;
+  const parentBranchId = branchMeta?.parentBranchId;
+
+  // 부모 컨텍스트의 메시지 소스: 2단계 브랜치면 부모 브랜치, 1단계면 메인 대화
+  const parentMsgKey = parentBranchId ? `branch:${parentBranchId}` : convId;
 
   const messagesRaw = useChatStore(s =>
     branchChannel ? s.messages[branchChannel] : undefined,
@@ -83,13 +87,13 @@ export function BranchPanel() {
 
   // DB에서 부모 대화 메시지 로드 (1회)
   useEffect(() => {
-    if (!convId || !checkpointId) return;
+    if (!parentMsgKey || !checkpointId) return;
     if (!isTauriEnv()) return;
     let cancelled = false;
     (async () => {
       try {
         const db = await import('@/lib/db');
-        const rows = await db.loadMessages(convId);
+        const rows = await db.loadMessages(parentMsgKey);
         if (cancelled) return;
         const msgs: ChatMessage[] = rows.map(r => ({
           id: r.id, role: r.role as 'user' | 'assistant',
@@ -103,10 +107,10 @@ export function BranchPanel() {
       }
     })();
     return () => { cancelled = true; };
-  }, [convId, checkpointId]);
+  }, [parentMsgKey, checkpointId]);
 
   // Zustand 반응형 폴백 — DB에 데이터가 없거나 비-Tauri 환경일 때
-  const storeParentMsgs = useChatStore(s => convId ? s.messages[convId] : undefined);
+  const storeParentMsgs = useChatStore(s => parentMsgKey ? s.messages[parentMsgKey] : undefined);
   const storeParentContext = useMemo(
     () => findCheckpointContext(storeParentMsgs, checkpointId),
     [storeParentMsgs, checkpointId],
@@ -121,8 +125,13 @@ export function BranchPanel() {
     const chat = useChatStore.getState();
 
     // 부모 메시지가 Zustand에 없으면 서버에 요청 (Zustand 폴백용)
-    if (!chat.messages[convId]?.length && checkpointId) {
-      wsClient.sendRpc('conversation.history', { conversation_id: convId });
+    if (parentMsgKey && !chat.messages[parentMsgKey]?.length && checkpointId) {
+      if (parentBranchId) {
+        // 2단계 브랜치: 부모 브랜치의 히스토리 요청
+        wsClient.sendRpc('conversation.history', { conversation_id: convId, branch_id: parentBranchId });
+      } else {
+        wsClient.sendRpc('conversation.history', { conversation_id: convId });
+      }
     }
 
     if (!chat.conversations[branchChannel]) {
@@ -163,7 +172,7 @@ export function BranchPanel() {
         }
       }
     };
-  }, [branchChannel, branchId, convId, projectKey, checkpointId]);
+  }, [branchChannel, branchId, convId, projectKey, checkpointId, parentMsgKey, parentBranchId]);
 
   // 부모 컨텍스트 + 브랜치 메시지 합산
   const messages = [...parentContext, ...branchMessages];
@@ -197,6 +206,23 @@ export function BranchPanel() {
     return () => window.removeEventListener('branch-deleted', handler as EventListener);
   }, [branchId, closeBranchPanel]);
 
+  // Breadcrumb: parentBranchId 체인을 역추적해서 조상 레이블 수집
+  const breadcrumbKey = useContextStore(s => {
+    const allBranches = Object.values(s.convBranchesByProject).flat();
+    const trail: string[] = [];
+    let cur = branchId;
+    const visited = new Set<string>();
+    while (cur && !visited.has(cur)) {
+      visited.add(cur);
+      const b = allBranches.find(x => x.id === cur);
+      if (!b) break;
+      trail.unshift(b.label);
+      cur = b.parentBranchId;
+    }
+    return trail.join('\0'); // 직렬화하여 참조 안정화
+  });
+  const breadcrumb = useMemo(() => breadcrumbKey ? breadcrumbKey.split('\0') : [], [breadcrumbKey]);
+
   // Grouping (same as ChatArea)
   const isGrouped = (i: number): boolean => {
     if (i === 0) return false;
@@ -209,9 +235,22 @@ export function BranchPanel() {
     <div className="flex flex-col h-full bg-[#0e0e0e] border-l border-outline-variant/30">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-outline-variant/30 shrink-0">
-        <GitFork size={16} className="text-violet-400" weight="bold" />
-        <span className="font-medium text-[13px] text-violet-300 truncate flex-1">{label}</span>
-        <span className="text-[10px] text-on-surface-variant/30 font-mono">{branchId?.slice(0, 8)}</span>
+        <GitFork size={16} className="text-violet-400 shrink-0" weight="bold" />
+        <div className="flex-1 min-w-0">
+          {breadcrumb.length > 1 ? (
+            <div className="flex items-center gap-1 text-[11px] text-on-surface-variant/40 truncate">
+              {breadcrumb.slice(0, -1).map((crumb, i) => (
+                <span key={i} className="flex items-center gap-1 shrink-0">
+                  <span>{crumb}</span>
+                  <span className="text-on-surface-variant/25">›</span>
+                </span>
+              ))}
+              <span className="font-medium text-violet-300 truncate">{breadcrumb[breadcrumb.length - 1]}</span>
+            </div>
+          ) : (
+            <span className="font-medium text-[13px] text-violet-300 truncate block">{label}</span>
+          )}
+        </div>
         <button
           onClick={() => {
             if (!convId || !branchId) return;

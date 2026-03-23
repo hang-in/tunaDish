@@ -122,7 +122,7 @@ interface ChatState {
   setProjects: (projects: Project[]) => void;
   setProjectsFromResult: (configured: Array<{ key: string; alias: string; path?: string | null; default_engine?: string | null; type?: string | null }>, discovered: string[]) => void;
   addConversation: (conv: Conversation) => void;
-  loadConversations: (convs: Array<{ id: string; projectKey: string; label: string; created_at: number; source?: string }>) => void;
+  loadConversations: (convs: Array<{ id: string; projectKey: string; label: string; created_at: number; source?: string; engine?: string; model?: string }>, fromDb?: boolean) => void;
   setActiveProject: (key: string) => void;
   setActiveConversation: (convId: string) => void;
   createConversation: (projectKey: string, type?: Conversation['type'], label?: string) => string;
@@ -131,7 +131,7 @@ interface ChatState {
 
   // Message actions (ordered array)
   addMessage: (ref: MessageRef, message: RenderedMessage, meta?: { engine?: string; model?: string; persona?: string }) => void;
-  updateMessage: (ref: MessageRef, message: RenderedMessage) => void;
+  updateMessage: (ref: MessageRef, message: RenderedMessage, meta?: { engine?: string; model?: string; persona?: string }) => void;
   deleteMessage: (ref: MessageRef) => void;
   pushMessage: (convId: string, msg: ChatMessage) => void;
   finalizeStreamingMessages: (convId: string) => void;
@@ -142,6 +142,7 @@ interface ChatState {
 
   // Conversation settings
   updateConvSettings: (convId: string, settings: Partial<ConvSettings>) => void;
+  renameConversation: (convId: string, label: string) => void;
 
   // Branch actions
   setActiveBranch: (branchId: string | null, label?: string | null) => void;
@@ -191,7 +192,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     conversations: { ...state.conversations, [conv.id]: conv },
   })),
 
-  loadConversations: (convs) => set((state) => {
+  loadConversations: (convs, fromDb) => set((state) => {
     const newConvs = { ...state.conversations };
     for (const c of convs) {
       // branch: prefix 가진 conversation은 서버 목록에서 무시 (BranchPanel이 직접 관리)
@@ -199,11 +200,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       const existing = newConvs[c.id];
       if (existing) {
-        // 서버 메타데이터로 업데이트 (label, source 등 갱신)
+        // label 우선순위: DB 소스 → 기존 스토어 값 → 서버 값
+        // 이름 변경은 클라이언트 전용이므로 DB에 저장된 label이 항상 최신
+        const label = fromDb ? (c.label || existing.label) : (existing.label || c.label);
         newConvs[c.id] = {
           ...existing,
-          label: c.label || existing.label,
+          label,
           source: (c.source as Conversation['source']) ?? existing.source,
+          engine: fromDb ? (c.engine ?? existing.engine) : (existing.engine ?? c.engine),
+          model: fromDb ? (c.model ?? existing.model) : (existing.model ?? c.model),
         };
       } else {
         newConvs[c.id] = {
@@ -213,6 +218,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           type: 'main',
           createdAt: c.created_at * 1000,
           source: (c.source as Conversation['source']) ?? 'tunadish',
+          engine: c.engine,
+          model: c.model,
         };
       }
     }
@@ -252,9 +259,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return id;
   },
 
-  setHistory: (convId, messages) => set((state) => ({
-    messages: { ...state.messages, [convId]: messages },
-  })),
+  setHistory: (convId, serverMessages) => set((state) => {
+    const local = state.messages[convId] ?? [];
+    // 서버가 알고 있는 메시지 ID 세트
+    const serverIds = new Set(serverMessages.map(m => m.id));
+    // 로컬에만 존재하는 메시지 보존 (streaming, sending, 또는 서버에 아직 미반영)
+    const localOnly = local.filter(
+      m => !serverIds.has(m.id) && (m.status === 'streaming' || m.status === 'sending' || !m.id.startsWith('hist-')),
+    );
+    return {
+      messages: {
+        ...state.messages,
+        [convId]: localOnly.length > 0 ? [...serverMessages, ...localOnly] : serverMessages,
+      },
+    };
+  }),
 
   // --- Message actions (ordered array model) ---
 
@@ -274,7 +293,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return { messages: { ...state.messages, [convId]: [...arr, msg] } };
   }),
 
-  updateMessage: (ref, message) => set((state) => {
+  updateMessage: (ref, message, meta) => set((state) => {
     const convId = ref.channel_id;
     const arr = state.messages[convId] ?? [];
     const idx = arr.findIndex(m => m.id === ref.message_id);
@@ -286,6 +305,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       ...prev,
       content: message.text,
       progressContent: prev.status === 'streaming' ? prev.content : prev.progressContent,
+      ...(meta?.engine !== undefined && { engine: meta.engine }),
+      ...(meta?.model !== undefined && { model: meta.model }),
+      ...(meta?.persona !== undefined && { persona: meta.persona }),
     };
     return { messages: { ...state.messages, [convId]: updated } };
   }),
@@ -333,6 +355,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         [convId]: { ...conv, ...settings },
       },
     };
+  }),
+
+  renameConversation: (convId, label) => set((state) => {
+    const conv = state.conversations[convId];
+    if (!conv) return state;
+    return { conversations: { ...state.conversations, [convId]: { ...conv, label } } };
   }),
 
   // Branch actions

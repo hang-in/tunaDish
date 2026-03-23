@@ -43,7 +43,9 @@ export async function hydrateFromDb(): Promise<void> {
         label: c.label,
         created_at: c.createdAt,
         source: c.source,
-      })));
+        engine: c.engine,
+        model: c.model,
+      })), true);
     }
 
     // 3. 활성 대화의 메시지 복원
@@ -64,12 +66,13 @@ export async function hydrateFromDb(): Promise<void> {
       }
     }
 
-    // 4. 브랜치 목록 복원 (각 대화별)
+    // 4. 브랜치 목록 복원 — 모든 대화 브랜치를 모아서 한 번만 set (루프마다 덮어쓰면 마지막 것만 남음)
     const ctxStore = useContextStore.getState();
+    const allBranches: ConversationBranch[] = [];
     for (const conv of convs) {
       const branches = await db.loadBranches(conv.id);
-      if (branches.length > 0) {
-        const mapped: ConversationBranch[] = branches.map(b => ({
+      for (const b of branches) {
+        allBranches.push({
           id: b.id,
           label: b.label,
           status: b.status as ConversationBranch['status'],
@@ -77,9 +80,11 @@ export async function hydrateFromDb(): Promise<void> {
           rtSessionId: b.sessionId,
           gitBranch: b.gitBranch,
           parentBranchId: b.parentBranchId,
-        }));
-        ctxStore.setProjectConvBranches(activeProjectKey, mapped);
+        });
       }
+    }
+    if (allBranches.length > 0) {
+      ctxStore.setProjectConvBranches(activeProjectKey, allBranches, true);
     }
 
     console.log('[dbHydrate] loaded', projects.length, 'projects,', convs.length, 'conversations from SQLite');

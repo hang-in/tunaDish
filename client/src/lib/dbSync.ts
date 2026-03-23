@@ -94,6 +94,20 @@ export function syncConvSettings(convId: string, settings: {
   });
 }
 
+export function syncConvLabel(convId: string, label: string) {
+  fire(async () => {
+    const db = await getDb();
+    db?.updateConvLabel(convId, label);
+  });
+}
+
+export function syncBranchLabel(branchId: string, label: string) {
+  fire(async () => {
+    const db = await getDb();
+    db?.updateBranchLabel(branchId, label);
+  });
+}
+
 // ─── Messages ────────────────────────────────────────────────────
 
 export function syncMessage(msg: {
@@ -107,14 +121,19 @@ export function syncMessage(msg: {
   });
 }
 
-export function syncMessageUpdate(convId: string, msgId: string, content: string) {
+export function syncMessageUpdate(convId: string, msgId: string, content: string, meta?: { engine?: string; model?: string; persona?: string }) {
   fire(async () => {
     const db = await getDb();
     if (!db) return;
     const d = await db.initDb();
+    const sets: string[] = ['content = $1'];
+    const args: unknown[] = [content];
+    if (meta?.engine !== undefined) { sets.push(`engine = $${args.length + 1}`); args.push(meta.engine); }
+    if (meta?.model !== undefined) { sets.push(`model = $${args.length + 1}`); args.push(meta.model); }
+    args.push(msgId, convId);
     await d.execute(
-      'UPDATE messages SET content = $1 WHERE id = $2 AND conversation_id = $3',
-      [content, msgId, convId],
+      `UPDATE messages SET ${sets.join(', ')} WHERE id = $${args.length - 1} AND conversation_id = $${args.length}`,
+      args,
     );
   });
 }

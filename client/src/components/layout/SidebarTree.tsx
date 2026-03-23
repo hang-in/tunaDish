@@ -1,9 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useSidebarTreeData, type SidebarNode } from '@/lib/sidebarTreeData';
 import { useChatStore } from '@/store/chatStore';
+import { useContextStore } from '@/store/contextStore';
 import { useRunStore } from '@/store/runStore';
 import { useSystemStore } from '@/store/systemStore';
 import { wsClient } from '@/lib/wsClient';
+import * as dbSync from '@/lib/dbSync';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -176,7 +178,7 @@ function NodeContent({ node, open, toggle, hasChildren }: {
     case 'session':
       return <SessionRow node={node} open={open} toggle={toggle} hasChildren={hasChildren} />;
     case 'convBranch':
-      return <ConvBranchRow node={node} />;
+      return <ConvBranchRow node={node} open={open} toggle={toggle} hasChildren={hasChildren} />;
     case 'git-section':
       return <GitSectionRow node={node} open={open} toggle={toggle} />;
     case 'gitBranch':
@@ -191,6 +193,7 @@ function defaultOpen(node: SidebarNode): boolean {
     case 'category': return true;
     case 'project': return false;
     case 'session': return true;
+    case 'convBranch': return true;
     case 'git-section': return false;
     default: return false;
   }
@@ -303,19 +306,42 @@ function SessionRow({ node, open, toggle, hasChildren }: {
 
   const activeConvId = useChatStore(s => s.activeConversationId);
   const setActive = useChatStore(s => s.setActiveConversation);
+  const renameConversation = useChatStore(s => s.renameConversation);
   const runStatus = useRunStore(s => s.activeRuns[conv.id] ?? 'idle');
   const isActive = activeConvId === conv.id;
   const isRunning = runStatus === 'running';
   const isCancelling = runStatus === 'cancelling';
 
+  const [editing, setEditing] = useState(false);
+  const [editLabel, setEditLabel] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
   const handleClick = () => {
+    if (editing) return;
     setActive(conv.id);
-    // 선택 시 접혀있으면 자동 펼침 (이미 열려있으면 유지)
     if (hasChildren && !open) toggle();
   };
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isRunning) wsClient.sendRpc('conversation.delete', { conversation_id: conv.id }).catch(console.error);
+  };
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditLabel(conv.label);
+    setEditing(true);
+    setTimeout(() => { inputRef.current?.select(); }, 0);
+  };
+  const commitRename = () => {
+    const trimmed = editLabel.trim();
+    if (trimmed && trimmed !== conv.label) {
+      renameConversation(conv.id, trimmed);
+      dbSync.syncConvLabel(conv.id, trimmed);
+    }
+    setEditing(false);
+  };
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+    if (e.key === 'Escape') setEditing(false);
   };
 
   return (
@@ -332,11 +358,19 @@ function SessionRow({ node, open, toggle, hasChildren }: {
       <span className="shrink-0 self-center w-[18px] flex items-center justify-center mr-1">
         <TransportIcon source={conv.source} active={isActive} />
       </span>
-      <span className="flex-1 truncate text-[13px]">{conv.label}</span>
-      {conv.engine && (
-        <span className="text-[9px] text-on-surface-variant/30 font-mono shrink-0 mr-1">
-          {conv.engine}{conv.model ? `/${conv.model}` : ''}
-        </span>
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={editLabel}
+          onChange={e => setEditLabel(e.target.value)}
+          onBlur={commitRename}
+          onKeyDown={handleKeyDown}
+          onClick={e => e.stopPropagation()}
+          className="flex-1 min-w-0 text-[13px] bg-white/10 border border-primary/40 rounded px-1 py-px outline-none"
+          autoFocus
+        />
+      ) : (
+        <span className="flex-1 truncate text-[13px]" onDoubleClick={handleDoubleClick}>{conv.label}</span>
       )}
       <span className="shrink-0 flex items-center gap-0.5 ml-1">
         {conv.hasResumeToken && <PauseCircle size={10} className="text-on-surface-variant/30" />}
@@ -344,7 +378,7 @@ function SessionRow({ node, open, toggle, hasChildren }: {
         {isRunning && <CircleNotch size={11} weight="bold" className="text-emerald-400 animate-spin" />}
         {isCancelling && <CircleNotch size={11} weight="bold" className="text-amber-400 animate-spin" />}
       </span>
-      {!isRunning && conv.source !== 'mattermost' && conv.source !== 'slack' && (
+      {!editing && !isRunning && conv.source !== 'mattermost' && conv.source !== 'slack' && (
         <button type="button" tabIndex={-1} onClick={handleDelete}
           className="hidden group-hover/row:flex items-center justify-center size-4 rounded text-on-surface-variant/30 hover:text-red-400 hover:bg-red-400/10 transition-colors shrink-0 ml-0.5"
           title="Delete session">
@@ -357,17 +391,40 @@ function SessionRow({ node, open, toggle, hasChildren }: {
 }
 
 // ─── Conv Branch ─────────────────────────────────────────────────
-function ConvBranchRow({ node }: { node: SidebarNode }) {
+function ConvBranchRow({ node, open, toggle, hasChildren }: { node: SidebarNode; open: boolean; toggle: () => void; hasChildren: boolean }) {
   const branch = node.branch;
   if (!branch) return null;
 
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editLabel, setEditLabel] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
   const activeBranchId = useSystemStore(s => s.branchPanelBranchId);
   const openBranchPanel = useSystemStore(s => s.openBranchPanel);
+  const renameConvBranch = useContextStore(s => s.renameConvBranch);
   const isActive = activeBranchId === branch.id;
 
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditLabel(branch.label);
+    setEditing(true);
+    setTimeout(() => { inputRef.current?.select(); }, 0);
+  };
+  const commitRename = () => {
+    const trimmed = editLabel.trim();
+    if (trimmed && trimmed !== branch.label) {
+      renameConvBranch(branch.id, trimmed);
+      dbSync.syncBranchLabel(branch.id, trimmed);
+    }
+    setEditing(false);
+  };
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+    if (e.key === 'Escape') setEditing(false);
+  };
+
   const handleClick = () => {
-    if (confirmDelete) return;
+    if (confirmDelete || editing) return;
     const state = useChatStore.getState();
     // 브랜치의 부모 세션 ID를 최우선으로 사용
     let convId: string | null = branch.rtSessionId ?? null;
@@ -423,14 +480,34 @@ function ConvBranchRow({ node }: { node: SidebarNode }) {
         )}
         onClick={handleClick}
       >
+        {hasChildren ? (
+          <span onClick={e => { e.stopPropagation(); toggle(); }} className="shrink-0 self-center">
+            <Arrow open={open} />
+          </span>
+        ) : null}
         <GitFork size={12} className="text-violet-400/60 shrink-0 self-center" />
-        <span className="truncate flex-1">{branch.label}</span>
-        <button type="button" tabIndex={-1} onClick={handleDeleteClick}
-          className="hidden group-hover/branch:flex items-center justify-center size-4 rounded text-on-surface-variant/30 hover:text-red-400 hover:bg-red-400/10 transition-colors shrink-0"
-          title="Delete branch">
-          <Trash size={10} />
-        </button>
-        {!isActive && <span className="text-[9px] text-on-surface-variant/25 shrink-0 group-hover/branch:hidden">Open →</span>}
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={editLabel}
+            onChange={e => setEditLabel(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={handleKeyDown}
+            onClick={e => e.stopPropagation()}
+            className="flex-1 min-w-0 text-[11px] bg-white/10 border border-violet-400/40 rounded px-1 py-px outline-none text-violet-200"
+            autoFocus
+          />
+        ) : (
+          <span className="truncate flex-1" onDoubleClick={handleDoubleClick}>{branch.label}</span>
+        )}
+        {!editing && (
+          <button type="button" tabIndex={-1} onClick={handleDeleteClick}
+            className="hidden group-hover/branch:flex items-center justify-center size-4 rounded text-on-surface-variant/30 hover:text-red-400 hover:bg-red-400/10 transition-colors shrink-0"
+            title="Delete branch">
+            <Trash size={10} />
+          </button>
+        )}
+        {!editing && !isActive && <span className="text-[9px] text-on-surface-variant/25 shrink-0 group-hover/branch:hidden">Open →</span>}
       </div>
 
       <AlertDialog open={confirmDelete} onOpenChange={v => { if (!v) setConfirmDelete(false); }}>

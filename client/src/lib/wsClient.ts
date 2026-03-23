@@ -59,6 +59,8 @@ class WebSocketClient {
       this.startHeartbeat();
       // 연결 직후 엔진/모델 목록 조회 (프로젝트 무관)
       this.listEngines();
+      // 재연결 시 활성 대화 + 브랜치 히스토리 복원
+      this.rehydrateActiveSession();
     };
 
     this.ws.onerror = () => {
@@ -219,6 +221,34 @@ class WebSocketClient {
     this.sendRpc('engine.list');
   }
 
+  /** WS 재연결 후 활성 대화/브랜치 히스토리를 서버에 재요청 */
+  private rehydrateActiveSession() {
+    const chat = useChatStore.getState();
+    const sys = useSystemStore.getState();
+
+    // context 캐시 초기화 — 재연결이므로 서버 상태와 동기화 필요
+    contextLoadedConvs.clear();
+
+    // 활성 메인 대화 히스토리 재요청
+    const convId = chat.activeConversationId;
+    if (convId && !convId.startsWith('branch:')) {
+      this.sendRpc('conversation.history', { conversation_id: convId });
+      // project.context도 재요청
+      const conv = chat.conversations[convId];
+      if (conv?.projectKey) {
+        this.sendRpc('project.context', { conversation_id: convId, project: conv.projectKey });
+        contextLoadedConvs.add(convId);
+      }
+    }
+
+    // 열려있는 브랜치 패널의 히스토리 재요청
+    const branchId = sys.branchPanelBranchId;
+    const branchConvId = sys.branchPanelConvId;
+    if (branchId && branchConvId) {
+      this.sendRpc('conversation.history', { conversation_id: branchConvId, branch_id: branchId });
+    }
+  }
+
   private handleNotification(data: { method?: string; params?: Record<string, unknown> }) {
     const { method, params } = data;
     if (!method || !params) return;
@@ -251,8 +281,13 @@ class WebSocketClient {
       }
       case 'message.update': {
         const updRef = params.ref as { channel_id: string; message_id: string };
-        chat.updateMessage(updRef, params.message as { text: string });
-        dbSync.syncMessageUpdate(updRef.channel_id, updRef.message_id, (params.message as { text: string }).text);
+        const updMeta = {
+          engine: params.engine as string | undefined,
+          model: params.model as string | undefined,
+          persona: params.persona as string | undefined,
+        };
+        chat.updateMessage(updRef, params.message as { text: string }, updMeta);
+        dbSync.syncMessageUpdate(updRef.channel_id, updRef.message_id, (params.message as { text: string }).text, updMeta);
         break;
       }
       case 'message.delete': {
@@ -357,14 +392,15 @@ class WebSocketClient {
           const settings = (params as Record<string, unknown>).settings as
             { engine?: string; model?: string; persona?: string; trigger_mode?: string } | undefined;
           if (settings) {
-            const convSettings = {
-              engine: settings.engine,
-              model: settings.model,
-              persona: settings.persona,
-              triggerMode: settings.trigger_mode,
-            };
-            chat.updateConvSettings(convId, convSettings);
-            dbSync.syncConvSettings(convId, convSettings);
+            const convSettings: Record<string, string | undefined> = {};
+            if (settings.engine !== undefined) convSettings.engine = settings.engine;
+            if (settings.model !== undefined) convSettings.model = settings.model;
+            if (settings.persona !== undefined) convSettings.persona = settings.persona;
+            if (settings.trigger_mode !== undefined) convSettings.triggerMode = settings.trigger_mode;
+            if (Object.keys(convSettings).length > 0) {
+              chat.updateConvSettings(convId, convSettings);
+              dbSync.syncConvSettings(convId, convSettings);
+            }
           }
           // command(model.set, trigger.set 등)로 context가 바뀔 수 있으므로 캐시 무효화 + 재요청
           contextLoadedConvs.delete(convId);
@@ -424,12 +460,14 @@ class WebSocketClient {
           { engine?: string; model?: string; persona?: string; trigger_mode?: string } | undefined;
         const ctxConvId = (p as Record<string, unknown>).conversation_id as string | undefined;
         if (convSettings && ctxConvId) {
-          chat.updateConvSettings(ctxConvId, {
-            engine: convSettings.engine,
-            model: convSettings.model,
-            persona: convSettings.persona,
-            triggerMode: convSettings.trigger_mode,
-          });
+          const filtered: Record<string, string | undefined> = {};
+          if (convSettings.engine !== undefined) filtered.engine = convSettings.engine;
+          if (convSettings.model !== undefined) filtered.model = convSettings.model;
+          if (convSettings.persona !== undefined) filtered.persona = convSettings.persona;
+          if (convSettings.trigger_mode !== undefined) filtered.triggerMode = convSettings.trigger_mode;
+          if (Object.keys(filtered).length > 0) {
+            chat.updateConvSettings(ctxConvId, filtered);
+          }
         }
         break;
       }
@@ -441,8 +479,12 @@ class WebSocketClient {
           git_branches: Array<{ name: string; status: string; description: string; parent_branch?: string; linked_entry_count: number; linked_discussion_count: number }>;
           conv_branches: Array<{ id: string; label: string; status: string; git_branch?: string; parent_branch_id?: string; session_id?: string; checkpoint_id?: string }>;
         };
+        // 로컬에서 이름을 변경했을 수 있으므로 기존 label 우선
+        const existingBranches = raw.project ? (useContextStore.getState().convBranchesByProject[raw.project] ?? []) : [];
+        const existingById = new Map(existingBranches.map(b => [b.id, b]));
         const mappedConv = raw.conv_branches.map(b => ({
-          id: b.id, label: b.label, status: b.status as ConversationBranch['status'],
+          id: b.id, label: existingById.get(b.id)?.label ?? b.label,
+          status: b.status as ConversationBranch['status'],
           gitBranch: b.git_branch, parentBranchId: b.parent_branch_id,
           rtSessionId: b.session_id, checkpointId: b.checkpoint_id,
         }));

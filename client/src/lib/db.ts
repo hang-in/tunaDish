@@ -247,6 +247,14 @@ export async function deleteConversation(convId: string): Promise<void> {
   await d.execute('DELETE FROM conversations WHERE id = $1', [convId]);
 }
 
+export async function updateConvLabel(convId: string, label: string): Promise<void> {
+  const d = await initDb();
+  await d.execute(
+    `UPDATE conversations SET label = $1, updated_at = unixepoch() WHERE id = $2`,
+    [label, convId],
+  );
+}
+
 export async function updateConvSettings(convId: string, settings: {
   engine?: string;
   model?: string;
@@ -357,6 +365,14 @@ export async function upsertBranch(branch: {
     [branch.id, branch.conversationId, branch.label, branch.status ?? 'active',
      branch.checkpointId ?? null, branch.sessionId ?? null,
      branch.gitBranch ?? null, branch.parentBranchId ?? null],
+  );
+}
+
+export async function updateBranchLabel(branchId: string, label: string): Promise<void> {
+  const d = await initDb();
+  await d.execute(
+    `UPDATE branches SET label = $1 WHERE id = $2`,
+    [label, branchId],
   );
 }
 

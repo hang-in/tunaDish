@@ -1,5 +1,27 @@
 import { create } from 'zustand';
 
+// --- sessionStorage persistence for branch panel (HMR 리로드 복원용) ---
+const SS_KEY_BRANCH = 'tunadish:branchPanel';
+
+interface BranchPanelState {
+  branchId: string | null;
+  convId: string | null;
+  label: string;
+  projectKey: string | null;
+  checkpointId: string | null;
+}
+
+function saveBranchPanel(state: BranchPanelState) {
+  try { sessionStorage.setItem(SS_KEY_BRANCH, JSON.stringify(state)); } catch { /* ignore */ }
+}
+
+function loadBranchPanel(): BranchPanelState {
+  try {
+    const raw = sessionStorage.getItem(SS_KEY_BRANCH);
+    return raw ? JSON.parse(raw) : { branchId: null, convId: null, label: '', projectKey: null, checkpointId: null };
+  } catch { return { branchId: null, convId: null, label: '', projectKey: null, checkpointId: null }; }
+}
+
 interface SystemState {
   isConnected: boolean;
   isDbConnected: boolean;
@@ -47,12 +69,12 @@ export const useSystemStore = create<SystemState>((set) => ({
   contextPanelOpen: true,
   sidebarWidth: 256,
   contextPanelWidth: 300,
-  branchPanelOpen: false,
-  branchPanelBranchId: null,
-  branchPanelConvId: null,
-  branchPanelLabel: '',
-  branchPanelProjectKey: null,
-  branchPanelCheckpointId: null,
+  branchPanelOpen: !!loadBranchPanel().branchId,
+  branchPanelBranchId: loadBranchPanel().branchId,
+  branchPanelConvId: loadBranchPanel().convId,
+  branchPanelLabel: loadBranchPanel().label,
+  branchPanelProjectKey: loadBranchPanel().projectKey,
+  branchPanelCheckpointId: loadBranchPanel().checkpointId,
 
   mobileSearchOpen: false,
   mobileSettingsSheetOpen: false,
@@ -72,22 +94,28 @@ export const useSystemStore = create<SystemState>((set) => ({
   setContextPanelOpen: (open) => set({ contextPanelOpen: open }),
   setSidebarWidth: (w) => set({ sidebarWidth: w }),
   setContextPanelWidth: (w) => set({ contextPanelWidth: w }),
-  openBranchPanel: (branchId, convId, label, projectKey, checkpointId) => set({
-    branchPanelOpen: true,
-    branchPanelBranchId: branchId,
-    branchPanelConvId: convId,
-    branchPanelLabel: label,
-    branchPanelProjectKey: projectKey,
-    branchPanelCheckpointId: checkpointId ?? null,
-  }),
-  closeBranchPanel: () => set({
-    branchPanelOpen: false,
-    branchPanelBranchId: null,
-    branchPanelConvId: null,
-    branchPanelLabel: '',
-    branchPanelProjectKey: null,
-    branchPanelCheckpointId: null,
-  }),
+  openBranchPanel: (branchId, convId, label, projectKey, checkpointId) => {
+    saveBranchPanel({ branchId, convId, label, projectKey, checkpointId: checkpointId ?? null });
+    set({
+      branchPanelOpen: true,
+      branchPanelBranchId: branchId,
+      branchPanelConvId: convId,
+      branchPanelLabel: label,
+      branchPanelProjectKey: projectKey,
+      branchPanelCheckpointId: checkpointId ?? null,
+    });
+  },
+  closeBranchPanel: () => {
+    saveBranchPanel({ branchId: null, convId: null, label: '', projectKey: null, checkpointId: null });
+    set({
+      branchPanelOpen: false,
+      branchPanelBranchId: null,
+      branchPanelConvId: null,
+      branchPanelLabel: '',
+      branchPanelProjectKey: null,
+      branchPanelCheckpointId: null,
+    });
+  },
   setMobileSearchOpen: (open) => set({ mobileSearchOpen: open }),
   setMobileSettingsSheetOpen: (open) => set({ mobileSettingsSheetOpen: open }),
   setConnectionStatus: (status) => set({ connectionStatus: status }),

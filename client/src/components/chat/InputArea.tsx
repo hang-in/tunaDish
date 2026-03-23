@@ -92,14 +92,17 @@ function QuickChipEngine({ convId, compact }: { convId: string; compact?: boolea
   const { engine, model, availableEngines } = useConvSettings(convId);
   const updateSettings = useChatStore(s => s.updateConvSettings);
   const [open, setOpen] = useState(false);
+  const isRunning = useRunStore(s => (s.activeRuns[convId] ?? 'idle') !== 'idle');
 
   const selectModel = (eng: string, m: string) => {
+    if (isRunning) return;
     updateSettings(convId, { engine: eng, model: m });
     wsClient.sendRpc('model.set', { conversation_id: convId, engine: eng, model: m });
     setOpen(false);
   };
 
   const selectEngine = (eng: string) => {
+    if (isRunning) return;
     updateSettings(convId, { engine: eng, model: undefined });
     wsClient.sendRpc('model.set', { conversation_id: convId, engine: eng });
     setOpen(false);
@@ -109,10 +112,15 @@ function QuickChipEngine({ convId, compact }: { convId: string; compact?: boolea
   const hasEngines = engineIds.length > 0;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={v => { if (isRunning) return; setOpen(v); }}>
       <PopoverTrigger
-        className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium
-          bg-white/5 hover:bg-white/10 text-on-surface-variant/70 hover:text-on-surface transition-colors cursor-pointer"
+        disabled={isRunning}
+        className={cn(
+          "flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors",
+          isRunning
+            ? "bg-white/5 text-on-surface-variant/30 cursor-not-allowed"
+            : "bg-white/5 hover:bg-white/10 text-on-surface-variant/70 hover:text-on-surface cursor-pointer",
+        )}
       >
         <Lightning size={12} weight="fill" className="text-primary" />
         <span className="hidden sm:inline">{engine}{model ? `/${model}` : ''}</span>

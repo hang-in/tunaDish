@@ -1,5 +1,6 @@
 import { useSystemStore } from '@/store/systemStore';
 import { useChatStore } from '@/store/chatStore';
+import { useRunStore } from '@/store/runStore';
 import { useConvSettings } from '@/lib/useConvSettings';
 import { wsClient } from '@/lib/wsClient';
 import { BottomSheet } from './BottomSheet';
@@ -21,12 +22,15 @@ export function MobileSettingsSheet() {
   const updateSettings = useChatStore(s => s.updateConvSettings);
   const settings = useConvSettings(convId);
 
+  const isRunning = useRunStore(s => (s.activeRuns[convId ?? ''] ?? 'idle') !== 'idle');
+
   if (!convId) return null;
 
   const { engine, model, persona, triggerMode, availableEngines } = settings;
   const engineIds = Object.keys(availableEngines);
 
   const selectModel = (eng: string, m?: string) => {
+    if (isRunning) return;
     updateSettings(convId, { engine: eng, model: m });
     wsClient.sendRpc('model.set', { conversation_id: convId, engine: eng, ...(m ? { model: m } : {}) });
   };
@@ -61,12 +65,15 @@ export function MobileSettingsSheet() {
                 {models.map(m => (
                   <button
                     key={m}
+                    disabled={isRunning}
                     onClick={() => selectModel(eng, m)}
                     className={cn(
                       'w-full text-left px-3 min-h-[44px] flex items-center rounded-lg text-[13px] font-mono transition-colors',
-                      eng === engine && m === model
-                        ? 'bg-primary/15 text-primary'
-                        : 'text-on-surface-variant/70 active:bg-white/5',
+                      isRunning
+                        ? 'text-on-surface-variant/30 cursor-not-allowed'
+                        : eng === engine && m === model
+                          ? 'bg-primary/15 text-primary'
+                          : 'text-on-surface-variant/70 active:bg-white/5',
                     )}
                   >
                     {m}

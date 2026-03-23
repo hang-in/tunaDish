@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { memo, useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useChatStore, type ChatMessage } from '@/store/chatStore';
@@ -35,7 +35,7 @@ export function ProgressBlock({ content, isDone }: { content: string; isDone: bo
   if (isDone) {
     const tail = tailLines(content, DONE_LINES);
     return (
-      <div className="text-[12px] text-on-surface-variant/60 font-mono leading-relaxed px-3 py-1.5 -mx-3 rounded-lg bg-white/[0.02] border border-white/5 mb-1">
+      <div className="text-[12px] text-on-surface-variant/60 font-mono leading-relaxed px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/5 mb-1">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{tail}</ReactMarkdown>
       </div>
     );
@@ -65,7 +65,7 @@ export function ProgressBlock({ content, isDone }: { content: string; isDone: bo
       <div
         ref={scrollRef}
         style={{ maxHeight: `${maxHeight}px`, overflowY: 'auto' }}
-        className="text-[12px] text-on-surface-variant/70 font-mono leading-relaxed px-3 py-1.5 -mx-3 rounded-lg bg-white/[0.02] border border-white/5 scrollbar-thin scrollbar-thumb-surface-container-high mb-1"
+        className="text-[12px] text-on-surface-variant/70 font-mono leading-relaxed px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/5 scrollbar-thin scrollbar-thumb-surface-container-high mb-1"
       >
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{visibleText}</ReactMarkdown>
       </div>
@@ -120,7 +120,7 @@ const proseClasses =
   'prose-th:text-[1em] prose-th:font-semibold prose-th:font-[inherit] prose-th:leading-normal prose-th:px-4 prose-th:py-2 ' +
   'prose-td:text-[1em] prose-td:font-normal prose-td:font-[inherit] prose-td:leading-normal prose-td:px-4 prose-td:py-1.5';
 
-export function MessageView({ msg, isGrouped, isRoleSwitch = false, conversationId, prevAssistantModel }: { msg: ChatMessage; isGrouped: boolean; isRoleSwitch?: boolean; conversationId?: string; prevAssistantModel?: string }) {
+export const MessageView = memo(function MessageView({ msg, isGrouped, isRoleSwitch = false, conversationId, prevAssistantModel }: { msg: ChatMessage; isGrouped: boolean; isRoleSwitch?: boolean; conversationId?: string; prevAssistantModel?: string }) {
   // Branch adopt summary card — special rendering
   if (msg.content.startsWith(ADOPT_SUMMARY_PREFIX)) {
     return <BranchAdoptCard content={msg.content} />;
@@ -261,4 +261,17 @@ export function MessageView({ msg, isGrouped, isRoleSwitch = false, conversation
       </div>
     </div>
   );
-}
+}, (prev, next) => {
+  // 스트리밍 중인 메시지는 항상 리렌더
+  if (next.msg.status === 'streaming') return false;
+  return (
+    prev.msg.id === next.msg.id &&
+    prev.msg.content === next.msg.content &&
+    prev.msg.status === next.msg.status &&
+    prev.msg.progressContent === next.msg.progressContent &&
+    prev.isGrouped === next.isGrouped &&
+    prev.isRoleSwitch === next.isRoleSwitch &&
+    prev.prevAssistantModel === next.prevAssistantModel &&
+    prev.conversationId === next.conversationId
+  );
+});

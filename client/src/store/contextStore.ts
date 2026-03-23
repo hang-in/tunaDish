@@ -137,7 +137,7 @@ interface ContextState {
 
   setActiveTab: (tab: ContextTab) => void;
   setProjectContext: (ctx: ProjectContext) => void;
-  setProjectConvBranches: (projectKey: string, branches: ConversationBranch[]) => void;
+  setProjectConvBranches: (projectKey: string, branches: ConversationBranch[], fromDb?: boolean) => void;
   setMemoryEntries: (entries: MemoryEntry[]) => void;
   setBranches: (git: GitBranch[], conv: ConversationBranch[]) => void;
   setReviews: (reviews: ReviewEntry[]) => void;
@@ -148,6 +148,7 @@ interface ContextState {
   setEngineList: (engines: Record<string, string[]>) => void;
   setLastRpcResult: (result: ContextState['lastRpcResult']) => void;
   removeConvBranch: (branchId: string) => void;
+  renameConvBranch: (branchId: string, label: string) => void;
   removeMemoryEntry: (entryId: string) => void;
   clear: () => void;
 }
@@ -169,26 +170,48 @@ export const useContextStore = create<ContextState>((set) => ({
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
-  setProjectContext: (ctx) => set((state) => ({
-    projectContext: ctx,
-    memoryEntries: ctx.memoryEntries,
-    gitBranches: ctx.activeBranches,
-    convBranches: ctx.convBranches,
-    // 프로젝트별 맵도 동시 갱신
-    convBranchesByProject: {
-      ...state.convBranchesByProject,
-      [ctx.project]: ctx.convBranches,
-    },
-  })),
+  setProjectContext: (ctx) => set((state) => {
+    // 로컬에서 이름을 변경했을 수 있으므로 기존 label 우선
+    const existingByProject = new Map((state.convBranchesByProject[ctx.project] ?? []).map(b => [b.id, b]));
+    const mergedBranches = ctx.convBranches.map(b => ({
+      ...b,
+      label: existingByProject.get(b.id)?.label ?? b.label,
+    }));
+    return {
+      projectContext: ctx,
+      memoryEntries: ctx.memoryEntries,
+      gitBranches: ctx.activeBranches,
+      convBranches: mergedBranches,
+      convBranchesByProject: {
+        ...state.convBranchesByProject,
+        [ctx.project]: mergedBranches,
+      },
+    };
+  }),
 
-  setProjectConvBranches: (projectKey, branches) => set((state) => ({
-    convBranchesByProject: {
-      ...state.convBranchesByProject,
-      [projectKey]: branches,
-    },
-    // 현재 활성 프로젝트면 convBranches도 갱신
-    ...(state.projectContext?.project === projectKey ? { convBranches: branches } : {}),
-  })),
+  setProjectConvBranches: (projectKey, branches, fromDb) => set((state) => {
+    // DB 소스일 때: 기존 스토어에 이미 서버 데이터가 있으면 label만 DB 값으로 덮어쓰기
+    let merged = branches;
+    if (fromDb) {
+      const existing = state.convBranchesByProject[projectKey] ?? [];
+      const existingById = new Map(existing.map(b => [b.id, b]));
+      merged = branches.map(b => {
+        const ex = existingById.get(b.id);
+        return ex ? { ...ex, label: b.label || ex.label } : b;
+      });
+      // 서버에만 있는 브랜치도 유지
+      for (const ex of existing) {
+        if (!branches.some(b => b.id === ex.id)) merged.push(ex);
+      }
+    }
+    return {
+      convBranchesByProject: {
+        ...state.convBranchesByProject,
+        [projectKey]: merged,
+      },
+      ...(state.projectContext?.project === projectKey ? { convBranches: merged } : {}),
+    };
+  }),
 
   setMemoryEntries: (entries) => set({ memoryEntries: entries }),
   setBranches: (git, conv) => set({ gitBranches: git, convBranches: conv }),
@@ -210,6 +233,15 @@ export const useContextStore = create<ContextState>((set) => ({
     const updated: Record<string, ConversationBranch[]> = {};
     for (const [key, list] of Object.entries(state.convBranchesByProject)) {
       updated[key] = list.filter(b => b.id !== branchId);
+    }
+    return { convBranches, convBranchesByProject: updated };
+  }),
+
+  renameConvBranch: (branchId, label) => set((state) => {
+    const convBranches = state.convBranches.map(b => b.id === branchId ? { ...b, label } : b);
+    const updated: Record<string, ConversationBranch[]> = {};
+    for (const [key, list] of Object.entries(state.convBranchesByProject)) {
+      updated[key] = list.map(b => b.id === branchId ? { ...b, label } : b);
     }
     return { convBranches, convBranchesByProject: updated };
   }),

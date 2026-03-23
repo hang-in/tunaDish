@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useSystemStore } from '@/store/systemStore';
 import { useChatStore, type ChatMessage } from '@/store/chatStore';
 import { wsClient } from '@/lib/wsClient';
@@ -18,12 +18,13 @@ export function MobileBranchSheet() {
 
   const branchChannel = branchId ? `branch:${branchId}` : null;
 
-  const messages = useChatStore(s => {
-    if (!branchChannel) return EMPTY_MESSAGES;
-    return (s.messages[branchChannel] ?? EMPTY_MESSAGES).filter(
-      m => !m.content.startsWith('<!-- branch-context'),
-    );
-  });
+  const rawMessages = useChatStore(s =>
+    branchChannel ? (s.messages[branchChannel] ?? EMPTY_MESSAGES) : EMPTY_MESSAGES
+  );
+  const messages = useMemo(
+    () => rawMessages.filter(m => !m.content.startsWith('<!-- branch-context')),
+    [rawMessages]
+  );
 
   // 브랜치 히스토리 로드 (메시지가 없을 때만 요청)
   useEffect(() => {

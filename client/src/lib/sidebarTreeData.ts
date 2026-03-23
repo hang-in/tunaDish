@@ -31,6 +31,37 @@ export interface SidebarNode {
 // ── Stable empty array (Zustand selector 안정성) ─────────────────
 const EMPTY_BRANCHES: ConversationBranch[] = [];
 
+/** 플랫 브랜치 리스트 → parentBranchId 기반 트리 구조 변환 */
+function buildBranchTree(branches: ConversationBranch[], projectKey: string): SidebarNode[] {
+  const byId = new Map(branches.map(b => [b.id, b]));
+  const childrenOf = new Map<string | undefined, ConversationBranch[]>();
+
+  for (const b of branches) {
+    // parentBranchId가 같은 프로젝트 브랜치에 있을 때만 자식으로 배치
+    const parentKey = b.parentBranchId && byId.has(b.parentBranchId) ? b.parentBranchId : undefined;
+    const list = childrenOf.get(parentKey) ?? [];
+    list.push(b);
+    childrenOf.set(parentKey, list);
+  }
+
+  function toNodes(parentId: string | undefined): SidebarNode[] {
+    const list = childrenOf.get(parentId) ?? [];
+    return list.map(b => {
+      const sub = toNodes(b.id);
+      return {
+        id: `convbranch:${b.id}`,
+        name: b.label,
+        nodeType: 'convBranch' as const,
+        branch: b,
+        projectKey,
+        children: sub.length > 0 ? sub : undefined,
+      };
+    });
+  }
+
+  return toNodes(undefined);
+}
+
 // ── Hook ─────────────────────────────────────────────────────────
 
 export function useSidebarTreeData(searchTerm: string): SidebarNode[] {
@@ -79,13 +110,8 @@ export function useSidebarTreeData(searchTerm: string): SidebarNode[] {
         const sessionBranches = activeBranches.filter(
           b => b.rtSessionId === c.id,
         );
-        const branchChildren: SidebarNode[] = sessionBranches.map(b => ({
-          id: `convbranch:${b.id}`,
-          name: b.label,
-          nodeType: 'convBranch' as const,
-          branch: b,
-          projectKey: pk,
-        }));
+        // parentBranchId 기반 트리 구조 변환
+        const branchChildren = buildBranchTree(sessionBranches, pk);
 
         children.push({
           id: `session:${c.id}`,
@@ -97,20 +123,13 @@ export function useSidebarTreeData(searchTerm: string): SidebarNode[] {
         });
       }
 
-      // rtSessionId가 없거나 매칭 안 되는 orphan branches → 프로젝트 직접 자식
+      // rtSessionId가 없거나 매칭 안 되는 orphan branches → 프로젝트 직접 자식 (트리 구조)
       const mappedBranchIds = new Set(
         activeBranches.filter(b => filteredConvs.some(c => c.id === b.rtSessionId)).map(b => b.id),
       );
-      for (const b of activeBranches) {
-        if (!mappedBranchIds.has(b.id)) {
-          children.push({
-            id: `convbranch:${b.id}`,
-            name: b.label,
-            nodeType: 'convBranch',
-            branch: b,
-            projectKey: pk,
-          });
-        }
+      const orphanBranches = activeBranches.filter(b => !mappedBranchIds.has(b.id));
+      if (orphanBranches.length > 0) {
+        children.push(...buildBranchTree(orphanBranches, pk));
       }
 
       // Git branches (active project only — requires project.context data)

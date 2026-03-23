@@ -81,6 +81,56 @@ Sprint 7 (안정화 & 기술 부채 해소) 진행 중. (2026-03-22 기준)
 - model.set 시 엔진 라우팅 수정 (다른 엔진 모델 선택 시 runner 전환)
 - journal에 engine/model 저장 + history 응답에 포함
 
+## 작업 규칙
+
+- 수정 전 반드시 관련 파일 전체를 읽고 시작할 것
+- 추측으로 코딩하지 말 것
+- 구현 지시 전에 코드 수정이나 작성을 임의로 하지 말 것
+- 기능 추가나 수정이 끝나고 필요하면 작업 단위를 작게 끊어서 타입체크/테스트 해 볼 것
+- 다른 프로젝트(tunapi 등)의 파일은 읽기 전용. 쓰기/수정 금지. 코드 변경이 필요하면 해당 프로젝트 측에 요청할 것
+- **앱(tunadish) 재시작/리로드를 에이전트가 직접 수행하지 말 것.** dev 서버 재시작, `npm run dev` 재실행, 브라우저 새로고침 등은 WS 연결을 끊고 진행 중인 대화를 유실시킬 수 있음. 앱 재시작이 필요하면 반드시 사용자에게 요청할 것
+
+## rawq 코드 검색
+
+이 프로젝트에는 rawq (시맨틱 + 렉시컬 하이브리드 코드 검색 엔진)가 vendor submodule로 포함되어 있다.
+에이전트는 코드베이스를 탐색할 때 rawq를 적극 활용할 것.
+
+- 바이너리: `vendor/rawq/target/debug/rawq.exe` (debug 빌드)
+- 상세 사용법: `vendor/rawq/SKILL.md` 참조
+
+### 언제 사용하는가
+
+| 상황 | 도구 |
+|------|------|
+| 어디에 구현되어 있는지 모를 때 | `rawq search` |
+| 프로젝트 구조 파악 | `rawq map` |
+| 특정 파일/정확한 문자열 검색 | `grep` / `Read` |
+| 변경된 코드 범위 내 검색 | `rawq diff` |
+
+### 주요 명령
+
+```bash
+RAWQ="vendor/rawq/target/debug/rawq.exe"
+
+# 시맨틱 검색 (자연어 질의가 효과적)
+$RAWQ search "how does websocket reconnection work" client/src --json --top 5
+
+# 프로젝트 구조
+$RAWQ map client/src --lang typescript
+
+# diff 범위 내 검색
+$RAWQ diff "store mutation" . --staged
+
+# 언어 필터 + 테스트 제외
+$RAWQ search "message history merge" client/src --lang typescript --exclude "*.test.*"
+```
+
+### 쿼리 작성 팁
+
+- 자연어 문장이 단일 키워드보다 훨씬 정확 (시맨틱 검색 활용)
+- grep 스타일 키워드 쿼리(`auth error`)보다 `"how does authentication error handling work"` 형태 권장
+- `--json` 으로 구조화된 출력 획득, `--top N`과 `--token-budget N`으로 결과량 조절
+
 ## tunapi 참조
 
 tunapi는 editable install로 참조. 소스: `D:\privateProject\tunapi\`
