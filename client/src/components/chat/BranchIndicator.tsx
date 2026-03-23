@@ -1,5 +1,5 @@
 import { useChatStore } from '@/store/chatStore';
-import { useContextStore } from '@/store/contextStore';
+import { useContextStore, selectConvBranches } from '@/store/contextStore';
 import { useSystemStore } from '@/store/systemStore';
 import { GitFork } from '@phosphor-icons/react';
 
@@ -10,7 +10,7 @@ export function BranchIndicator() {
   const activeConv = useChatStore(s =>
     s.activeConversationId ? s.conversations[s.activeConversationId] : null
   );
-  const convBranches = useContextStore(s => s.convBranches);
+  const convBranches = useContextStore(selectConvBranches);
   const activeBranches = convBranches.filter(b => b.status === 'active' || b.status === 'adopted');
   const branchPanelOpen = useSystemStore(s => s.branchPanelOpen);
 

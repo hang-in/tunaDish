@@ -1,8 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useChatStore } from '@/store/chatStore';
-import { useContextStore } from '@/store/contextStore';
-import { wsClient } from '@/lib/wsClient';
-import * as dbSync from '@/lib/dbSync';
+import { useMessageActions } from '@/hooks/useMessageActions';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import {
@@ -17,7 +15,6 @@ import {
   Trash,
   GitFork,
 } from '@phosphor-icons/react';
-import { showToast } from './ActionToast';
 import {
   Dialog,
   DialogContent,
@@ -25,22 +22,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-
-/**
- * 현재 활성 브랜치를 기준으로 새 브랜치 이름을 계산합니다.
- * - 메인에서 생성: b1, b2, b3 ...
- * - b1에서 생성: b1.1, b1.2 ...
- * - b1.1에서 생성: b1.1.1, b1.1.2 ...
- */
-function computeBranchLabel(activeBranchId: string | null): string {
-  const allBranches = Object.values(useContextStore.getState().convBranchesByProject).flat();
-  const parentLabel = activeBranchId
-    ? allBranches.find(b => b.id === activeBranchId)?.label ?? null
-    : null;
-  const siblingCount = allBranches.filter(b => b.parentBranchId === (activeBranchId ?? undefined)).length;
-  const n = siblingCount + 1;
-  return parentLabel ? `${parentLabel}.${n}` : `b${n}`;
-}
 
 // --- Branch Name Dialog ---
 function BranchNameDialog({ open, defaultLabel, onConfirm, onCancel }: {
@@ -99,83 +80,26 @@ function BranchNameDialog({ open, defaultLabel, onConfirm, onCancel }: {
 
 // --- Message Actions (hover action bar) ---
 export function MessageActions({ role, messageId, content, conversationId }: { role: 'user' | 'assistant'; messageId: string; content: string; conversationId?: string }) {
-  const isAssistant = role === 'assistant';
-  const isUser = role === 'user';
-  const storeConvId = useChatStore(s => s.activeConversationId);
-  const activeConvId = conversationId ?? storeConvId;
-  const conversations = useChatStore(s => s.conversations);
-  const activeBranchId = useChatStore(s => s.activeBranchId);
-  const setReplyTo = useChatStore(s => s.setReplyTo);
-  const setEditingMsg = useChatStore(s => s.setEditingMsg);
-  const removeMessage = useChatStore(s => s.removeMessage);
+  const {
+    isAssistant,
+    isBranch,
+    handleCopy,
+    handleCopyAsText,
+    handleReply,
+    handleEdit,
+    handleDelete,
+    handleRetry,
+    handleSave,
+    handleBranch,
+    handleAdopt,
+    isUser,
+    branchDialogOpen,
+    setBranchDialogOpen,
+    branchDefaultLabel,
+    handleBranchConfirm,
+  } = useMessageActions({ role, messageId, content, conversationId });
+
   const [moreOpen, setMoreOpen] = useState(false);
-  const [branchDialogOpen, setBranchDialogOpen] = useState(false);
-  const [branchDefaultLabel, setBranchDefaultLabel] = useState('');
-
-  // branch: 채널이면 부모 conv_id로 resolve (백엔드 RPC용)
-  const resolvedConvId = activeConvId?.startsWith('branch:')
-    ? conversations[activeConvId]?.parentId ?? activeConvId
-    : activeConvId;
-
-  const handleAdopt = () => {
-    if (!resolvedConvId) return;
-    wsClient.sendRpc('message.adopt', { conversation_id: resolvedConvId, message_id: messageId });
-    showToast('Adopted');
-  };
-  const handleRetry = () => {
-    if (!resolvedConvId) return;
-    wsClient.sendRpc('message.retry', { conversation_id: resolvedConvId, message_id: messageId });
-  };
-  const handleBranch = () => {
-    if (!resolvedConvId) return;
-    setBranchDefaultLabel(computeBranchLabel(activeBranchId));
-    setBranchDialogOpen(true);
-  };
-  const handleBranchConfirm = (label: string) => {
-    if (!resolvedConvId) return;
-    // 브랜치 패널에서 생성 → 현재 브랜치를 부모로, 메인 창에서 생성 → 루트 브랜치(null)
-    const parentBranchId = activeConvId?.startsWith('branch:')
-      ? activeBranchId ?? null
-      : null;
-    wsClient.sendRpc('branch.create', {
-      conversation_id: resolvedConvId,
-      checkpoint_id: messageId,
-      label,
-      parent_branch_id: parentBranchId,
-    });
-    setBranchDialogOpen(false);
-  };
-  const handleSave = () => {
-    if (!resolvedConvId) return;
-    wsClient.sendRpc('message.save', { conversation_id: resolvedConvId, message_id: messageId, content });
-    showToast('Saved to memory');
-  };
-  const handleReply = () => {
-    const snippet = content.length > 120 ? content.slice(0, 120) + '...' : content;
-    setReplyTo(messageId, snippet);
-  };
-  const handleCopyMessage = () => {
-    navigator.clipboard.writeText(content);
-    setMoreOpen(false);
-    showToast('Copied');
-  };
-  const handleCopyAsText = () => {
-    const plain = content.replace(/[*_~`#>\[\]()!]/g, '').replace(/\n{3,}/g, '\n\n');
-    navigator.clipboard.writeText(plain);
-    setMoreOpen(false);
-    showToast('Copied as text');
-  };
-  const handleEdit = () => {
-    setEditingMsg(messageId);
-    setMoreOpen(false);
-  };
-  const handleDelete = () => {
-    if (!activeConvId) return;
-    removeMessage(activeConvId, messageId);
-    wsClient.sendRpc('message.delete', { conversation_id: resolvedConvId ?? activeConvId, message_id: messageId });
-    dbSync.syncMessageDelete(activeConvId, messageId);
-    setMoreOpen(false);
-  };
 
   const btnClass = 'p-1 rounded-full hover:bg-white/10 text-on-surface-variant/60 transition-colors';
 
@@ -188,7 +112,7 @@ export function MessageActions({ role, messageId, content, conversationId }: { r
         moreOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100',
       )}
     >
-      {isAssistant && activeConvId?.startsWith('branch:') && (
+      {isAssistant && isBranch && (
         <button onClick={handleAdopt} className={cn(btnClass, 'hover:text-emerald-400')} title="Adopt">
           <CheckCircle size={16} weight="bold" />
         </button>
@@ -217,19 +141,19 @@ export function MessageActions({ role, messageId, content, conversationId }: { r
           <DotsThree size={16} weight="bold" />
         </PopoverTrigger>
         <PopoverContent align="end" side="bottom" sideOffset={6} className="w-40 p-1">
-          <button onClick={handleCopyMessage} className="w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] text-on-surface-variant hover:bg-white/5 transition-colors">
+          <button onClick={() => { handleCopy(); setMoreOpen(false); }} className="w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] text-on-surface-variant hover:bg-white/5 transition-colors">
             <Copy size={14} /> 메시지 복사
           </button>
-          <button onClick={handleCopyAsText} className="w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] text-on-surface-variant hover:bg-white/5 transition-colors">
+          <button onClick={() => { handleCopyAsText(); setMoreOpen(false); }} className="w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] text-on-surface-variant hover:bg-white/5 transition-colors">
             <TextT size={14} /> 텍스트로 복사
           </button>
           {isUser && (
-            <button onClick={handleEdit} className="w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] text-on-surface-variant hover:bg-white/5 transition-colors">
+            <button onClick={() => { handleEdit(); setMoreOpen(false); }} className="w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] text-on-surface-variant hover:bg-white/5 transition-colors">
               <PencilSimple size={14} /> 편집
             </button>
           )}
           <div className="my-0.5 border-t border-white/5" />
-          <button onClick={handleDelete} className="w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] text-red-400/80 hover:bg-red-500/10 hover:text-red-400 transition-colors">
+          <button onClick={() => { handleDelete(); setMoreOpen(false); }} className="w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] text-red-400/80 hover:bg-red-500/10 hover:text-red-400 transition-colors">
             <Trash size={14} /> 삭제
           </button>
         </PopoverContent>
@@ -253,21 +177,24 @@ export function MobileContextMenu({ open, onClose, role, messageId, content, con
   content: string;
   conversationId?: string;
 }) {
-  const isAssistant = role === 'assistant';
-  const isUser = role === 'user';
-  const storeConvId = useChatStore(s => s.activeConversationId);
-  const activeConvId = conversationId ?? storeConvId;
-  const conversations = useChatStore(s => s.conversations);
-  const activeBranchId = useChatStore(s => s.activeBranchId);
-  const setReplyTo = useChatStore(s => s.setReplyTo);
-  const setEditingMsg = useChatStore(s => s.setEditingMsg);
-  const removeMessage = useChatStore(s => s.removeMessage);
-
-  const resolvedConvId = activeConvId?.startsWith('branch:')
-    ? conversations[activeConvId]?.parentId ?? activeConvId
-    : activeConvId;
-  const [branchDialogOpen, setBranchDialogOpen] = useState(false);
-  const [branchDefaultLabel, setBranchDefaultLabel] = useState('');
+  const {
+    isAssistant,
+    isUser,
+    isBranch,
+    handleCopy,
+    handleCopyAsText,
+    handleReply,
+    handleEdit,
+    handleDelete,
+    handleRetry,
+    handleSave,
+    handleBranch,
+    handleAdopt,
+    branchDialogOpen,
+    setBranchDialogOpen,
+    branchDefaultLabel,
+    handleBranchConfirm,
+  } = useMessageActions({ role, messageId, content, conversationId });
 
   if (!open && !branchDialogOpen) return null;
 
@@ -290,78 +217,47 @@ export function MobileContextMenu({ open, onClose, role, messageId, content, con
           <div className="w-8 h-1 rounded-full bg-[#e5e2e1]/20" />
         </div>
 
-        <button onClick={() => handleAction(() => {
-          const snippet = content.length > 120 ? content.slice(0, 120) + '...' : content;
-          setReplyTo(messageId, snippet);
-        })} className={menuItemClass}>
+        <button onClick={() => handleAction(handleReply)} className={menuItemClass}>
           <ArrowBendUpLeft size={18} /> 답장
         </button>
 
-        <button onClick={() => handleAction(() => {
-          navigator.clipboard.writeText(content);
-          showToast('Copied');
-        })} className={menuItemClass}>
+        <button onClick={() => handleAction(handleCopy)} className={menuItemClass}>
           <Copy size={18} /> 복사
         </button>
 
-        <button onClick={() => handleAction(() => {
-          const plain = content.replace(/[*_~`#>\[\]()!]/g, '').replace(/\n{3,}/g, '\n\n');
-          navigator.clipboard.writeText(plain);
-          showToast('Copied as text');
-        })} className={menuItemClass}>
+        <button onClick={() => handleAction(handleCopyAsText)} className={menuItemClass}>
           <TextT size={18} /> 텍스트로 복사
         </button>
 
-        <button onClick={() => {
-          if (!resolvedConvId) return;
-          setBranchDefaultLabel(computeBranchLabel(activeBranchId));
-          setBranchDialogOpen(true);
-          onClose();
-        }} className={menuItemClass}>
+        <button onClick={() => { handleBranch(); onClose(); }} className={menuItemClass}>
           <GitFork size={18} /> 브랜치 생성
         </button>
 
-        <button onClick={() => handleAction(() => {
-          if (!resolvedConvId) return;
-          wsClient.sendRpc('message.save', { conversation_id: resolvedConvId, message_id: messageId, content });
-          showToast('Saved to memory');
-        })} className={menuItemClass}>
+        <button onClick={() => handleAction(handleSave)} className={menuItemClass}>
           <BookmarkSimple size={18} /> 메모리에 저장
         </button>
 
         {isAssistant && (
-          <button onClick={() => handleAction(() => {
-            if (!resolvedConvId) return;
-            wsClient.sendRpc('message.retry', { conversation_id: resolvedConvId, message_id: messageId });
-          })} className={menuItemClass}>
+          <button onClick={() => handleAction(handleRetry)} className={menuItemClass}>
             <ArrowClockwise size={18} /> 다시 생성
           </button>
         )}
 
-        {isAssistant && activeConvId?.startsWith('branch:') && (
-          <button onClick={() => handleAction(() => {
-            if (!resolvedConvId) return;
-            wsClient.sendRpc('message.adopt', { conversation_id: resolvedConvId, message_id: messageId });
-            showToast('Adopted');
-          })} className={menuItemClass}>
+        {isAssistant && isBranch && (
+          <button onClick={() => handleAction(handleAdopt)} className={menuItemClass}>
             <CheckCircle size={18} /> 채택
           </button>
         )}
 
         {isUser && (
-          <button onClick={() => handleAction(() => setEditingMsg(messageId))} className={menuItemClass}>
+          <button onClick={() => handleAction(handleEdit)} className={menuItemClass}>
             <PencilSimple size={18} /> 편집
           </button>
         )}
 
         <div className="my-1 mx-4 border-t border-white/5" />
 
-        <button onClick={() => handleAction(() => {
-          if (!activeConvId) return;
-          removeMessage(activeConvId, messageId);
-          wsClient.sendRpc('message.delete', { conversation_id: resolvedConvId ?? activeConvId, message_id: messageId });
-          dbSync.syncMessageDelete(activeConvId, messageId);
-        })} className={cn(menuItemClass, 'text-red-400/80')}>
+        <button onClick={() => handleAction(handleDelete)} className={cn(menuItemClass, 'text-red-400/80')}>
           <Trash size={18} /> 삭제
         </button>
       </div>
@@ -369,19 +265,7 @@ export function MobileContextMenu({ open, onClose, role, messageId, content, con
     <BranchNameDialog
       open={branchDialogOpen}
       defaultLabel={branchDefaultLabel}
-      onConfirm={(label) => {
-        if (!resolvedConvId) { setBranchDialogOpen(false); return; }
-        const parentBranchId = activeConvId?.startsWith('branch:')
-          ? activeBranchId ?? null
-          : null;
-        wsClient.sendRpc('branch.create', {
-          conversation_id: resolvedConvId,
-          checkpoint_id: messageId,
-          label,
-          parent_branch_id: parentBranchId,
-        });
-        setBranchDialogOpen(false);
-      }}
+      onConfirm={handleBranchConfirm}
       onCancel={() => setBranchDialogOpen(false)}
     />
     </>

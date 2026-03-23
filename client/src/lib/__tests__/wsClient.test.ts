@@ -72,7 +72,6 @@ function resetContextStore() {
     projectContext: null,
     memoryEntries: [],
     gitBranches: [],
-    convBranches: [],
     convBranchesByProject: {},
     reviews: [],
     progress: null,

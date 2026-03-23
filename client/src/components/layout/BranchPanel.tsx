@@ -3,6 +3,7 @@ import { useSystemStore } from '@/store/systemStore';
 import { useChatStore, type ChatMessage } from '@/store/chatStore';
 import { useContextStore } from '@/store/contextStore';
 import { wsClient } from '@/lib/wsClient';
+import { computeMsgMeta } from '@/lib/messageGrouping';
 import { MessageView } from '@/components/chat/MessageView';
 import { InputArea } from '@/components/chat/InputArea';
 import { isTauriEnv } from '@/lib/db';
@@ -225,13 +226,8 @@ export function BranchPanel() {
   });
   const breadcrumb = useMemo(() => breadcrumbKey ? breadcrumbKey.split('\0') : [], [breadcrumbKey]);
 
-  // Grouping (same as ChatArea)
-  const isGrouped = (i: number): boolean => {
-    if (i === 0) return false;
-    const prev = messages[i - 1];
-    const cur = messages[i];
-    return prev.role === cur.role && cur.timestamp - prev.timestamp < 5 * 60 * 1000;
-  };
+  // Pre-compute message metadata (same logic as ChatArea)
+  const msgMeta = useMemo(() => computeMsgMeta(messages), [messages]);
 
   return (
     <div className="flex flex-col h-full bg-[#0e0e0e] border-l border-outline-variant/30">
@@ -316,20 +312,9 @@ export function BranchPanel() {
             )}
             {/* Branch messages */}
             {branchMessages.map((msg, i) => {
-              const offset = parentContext.length;
-              const globalIdx = offset + i;
-              const prev = globalIdx > 0 ? messages[globalIdx - 1] : null;
-              const roleSwitch = prev !== null && prev.role !== msg.role;
-              let prevAssistantModel: string | undefined;
-              if (msg.role === 'assistant') {
-                for (let j = globalIdx - 1; j >= 0; j--) {
-                  if (messages[j].role === 'assistant' && messages[j].engine) {
-                    prevAssistantModel = `${messages[j].engine}/${messages[j].model}`;
-                    break;
-                  }
-                }
-              }
-              return <MessageView key={msg.id} msg={msg} isGrouped={isGrouped(globalIdx)} isRoleSwitch={roleSwitch} conversationId={branchChannel ?? undefined} prevAssistantModel={prevAssistantModel} />;
+              const globalIdx = parentContext.length + i;
+              const meta = msgMeta[globalIdx];
+              return <MessageView key={msg.id} msg={msg} isGrouped={meta?.isGrouped ?? false} isRoleSwitch={meta?.isRoleSwitch ?? false} conversationId={branchChannel ?? undefined} prevAssistantModel={meta?.prevAssistantModel} />;
             })}
           </>
         )}

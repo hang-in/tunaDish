@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useContextStore } from '@/store/contextStore';
+import { useContextStore, selectConvBranches } from '@/store/contextStore';
 import type {
   ContextTab,
   ProjectContext,
@@ -19,7 +19,7 @@ function resetStore() {
     projectContext: null,
     memoryEntries: [],
     gitBranches: [],
-    convBranches: [],
+    convBranchesByProject: {},
     reviews: [],
     progress: null,
   });
@@ -106,6 +106,11 @@ function makeProgressState(overrides: Partial<ProgressState> = {}): ProgressStat
   };
 }
 
+/** Helper: get derived convBranches for the active project */
+function getConvBranches(): ConversationBranch[] {
+  return selectConvBranches(store.getState());
+}
+
 // ---------------------------------------------------------------------------
 // Setup
 // ---------------------------------------------------------------------------
@@ -161,11 +166,11 @@ describe('setProjectContext', () => {
     expect(store.getState().gitBranches).toEqual(branches);
   });
 
-  it('derives convBranches from ctx.convBranches', () => {
+  it('derives convBranches from ctx.convBranches via selector', () => {
     const convs = [makeConvBranch({ id: 'cb-x' }), makeConvBranch({ id: 'cb-y' })];
     const ctx = makeProjectContext({ convBranches: convs });
     store.getState().setProjectContext(ctx);
-    expect(store.getState().convBranches).toEqual(convs);
+    expect(getConvBranches()).toEqual(convs);
   });
 
   it('does not affect reviews or progress', () => {
@@ -200,12 +205,11 @@ describe('setMemoryEntries', () => {
 // ---------------------------------------------------------------------------
 
 describe('setBranches', () => {
-  it('replaces both gitBranches and convBranches', () => {
+  it('replaces gitBranches', () => {
     const git = [makeGitBranch({ name: 'main' }), makeGitBranch({ name: 'develop' })];
     const conv = [makeConvBranch({ id: 'cb-a' })];
     store.getState().setBranches(git, conv);
     expect(store.getState().gitBranches).toEqual(git);
-    expect(store.getState().convBranches).toEqual(conv);
   });
 
   it('clears previous gitBranches when new array is empty', () => {
@@ -253,10 +257,6 @@ describe('setProgress', () => {
 });
 
 // ---------------------------------------------------------------------------
-// clear
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // setProjectConvBranches
 // ---------------------------------------------------------------------------
 
@@ -267,17 +267,17 @@ describe('setProjectConvBranches', () => {
     expect(store.getState().convBranchesByProject['proj-a']).toEqual(branches);
   });
 
-  it('updates convBranches when project matches active projectContext', () => {
+  it('updates derived convBranches when project matches active projectContext', () => {
     store.getState().setProjectContext(makeProjectContext({ project: 'tunadish' }));
     const branches = [makeConvBranch({ id: 'new-cb' })];
     store.getState().setProjectConvBranches('tunadish', branches);
-    expect(store.getState().convBranches).toEqual(branches);
+    expect(getConvBranches()).toEqual(branches);
   });
 
-  it('does not update convBranches for a different project', () => {
+  it('does not affect derived convBranches for a different project', () => {
     store.getState().setProjectContext(makeProjectContext({ project: 'tunadish', convBranches: [makeConvBranch({ id: 'orig' })] }));
     store.getState().setProjectConvBranches('other-proj', [makeConvBranch({ id: 'x' })]);
-    expect(store.getState().convBranches.map(b => b.id)).toContain('orig');
+    expect(getConvBranches().map(b => b.id)).toContain('orig');
   });
 });
 
@@ -286,15 +286,17 @@ describe('setProjectConvBranches', () => {
 // ---------------------------------------------------------------------------
 
 describe('removeConvBranch', () => {
-  it('removes a branch from convBranches', () => {
-    store.setState({ convBranches: [makeConvBranch({ id: 'del' }), makeConvBranch({ id: 'keep' })] });
+  it('removes a branch from convBranchesByProject', () => {
+    store.getState().setProjectContext(makeProjectContext({ project: 'tunadish', convBranches: [] }));
+    store.setState({
+      convBranchesByProject: { tunadish: [makeConvBranch({ id: 'del' }), makeConvBranch({ id: 'keep' })] },
+    });
     store.getState().removeConvBranch('del');
-    expect(store.getState().convBranches.map(b => b.id)).toEqual(['keep']);
+    expect(getConvBranches().map(b => b.id)).toEqual(['keep']);
   });
 
-  it('removes from convBranchesByProject too', () => {
+  it('removes from convBranchesByProject for all projects', () => {
     store.setState({
-      convBranches: [makeConvBranch({ id: 'x' })],
       convBranchesByProject: { 'proj-a': [makeConvBranch({ id: 'x' }), makeConvBranch({ id: 'y' })] },
     });
     store.getState().removeConvBranch('x');
@@ -372,11 +374,13 @@ describe('setLastRpcResult', () => {
 
 describe('clear', () => {
   it('resets all data fields to their defaults', () => {
+    store.getState().setProjectContext(makeProjectContext({
+      project: 'tunadish',
+      convBranches: [makeConvBranch()],
+    }));
     store.setState({
-      projectContext: makeProjectContext(),
       memoryEntries: [makeMemoryEntry()],
       gitBranches: [makeGitBranch()],
-      convBranches: [makeConvBranch()],
       reviews: [makeReviewEntry()],
       progress: makeProgressState(),
     });
@@ -387,7 +391,7 @@ describe('clear', () => {
     expect(s.projectContext).toBeNull();
     expect(s.memoryEntries).toHaveLength(0);
     expect(s.gitBranches).toHaveLength(0);
-    expect(s.convBranches).toHaveLength(0);
+    expect(getConvBranches()).toHaveLength(0);
     expect(s.reviews).toHaveLength(0);
     expect(s.progress).toBeNull();
   });

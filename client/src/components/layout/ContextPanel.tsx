@@ -1,5 +1,5 @@
 import { useSystemStore } from '@/store/systemStore';
-import { useContextStore, type ContextTab, type MemoryEntry, type GitBranch, type ConversationBranch, type CodeSearchResult } from '@/store/contextStore';
+import { useContextStore, selectConvBranches, type ContextTab, type MemoryEntry, type GitBranch, type ConversationBranch, type CodeSearchResult } from '@/store/contextStore';
 import { useChatStore } from '@/store/chatStore';
 import { wsClient } from '@/lib/wsClient';
 import { useEffect, useState, useRef, useCallback } from 'react';
@@ -323,7 +323,7 @@ function DeleteConfirmDialog({
 // --- Branches Tab ---
 function BranchesTab() {
   const gitBranches = useContextStore(s => s.gitBranches);
-  const convBranches = useContextStore(s => s.convBranches);
+  const convBranches = useContextStore(selectConvBranches);
   const ctx = useContextStore(s => s.projectContext);
   const activeConvId = useChatStore(s => s.activeConversationId);
   const activeConv = useChatStore(s =>

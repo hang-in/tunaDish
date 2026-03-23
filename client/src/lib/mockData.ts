@@ -63,14 +63,6 @@ export const MOCK_CONVERSATIONS: Record<string, Conversation> = {
     parentId: 'conv-main-1',
     engine: 'claude',
     createdAt: Date.now() - 900_000,
-    discussion: {
-      topic: 'Transport layer architecture',
-      participants: ['claude', 'gemini'],
-      currentRound: 2,
-      maxRounds: 3,
-      turnOrder: ['claude', 'gemini'],
-      status: 'in_progress',
-    },
   },
   'conv-main-2': {
     id: 'conv-main-2',

@@ -39,15 +39,6 @@ export interface Project {
   triggerMode?: 'always' | 'mentions' | 'off';
 }
 
-export interface DiscussionState {
-  topic: string;
-  participants: string[];
-  currentRound: number;
-  maxRounds: number;
-  turnOrder: string[];
-  status: 'pending' | 'in_progress' | 'completed' | 'abandoned';
-}
-
 /** Conversation-level settings (override project defaults) */
 export interface ConvSettings {
   engine?: string;
@@ -70,7 +61,6 @@ export interface Conversation {
   pendingReviewCount?: number;
   createdAt: number;
   source?: 'tunadish' | 'mattermost' | 'slack';
-  discussion?: DiscussionState;
 }
 
 export interface ChatMessage {

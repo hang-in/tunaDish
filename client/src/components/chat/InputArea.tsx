@@ -12,7 +12,6 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import {
   PaperPlaneRight,
   Stop,
-  Paperclip,
   GitMerge,
   GitBranch,
   Lightning,
@@ -470,11 +469,6 @@ export function InputArea({ overrideConversationId, compact }: { overrideConvers
               : 'pb-[52px] min-h-[100px] max-h-[300px]',
           )}
         />
-        <div className="absolute bottom-3 left-3 flex items-center gap-1">
-          <button disabled className="p-1.5 hover:bg-white/5 rounded-md text-on-surface-variant transition-colors disabled:opacity-30" title="Attach">
-            <Paperclip size={18} />
-          </button>
-        </div>
         <div className="absolute bottom-3 right-3 flex items-center gap-2">
           {isRunning && (
             <button onClick={() => activeConversationId && requestCancel(activeConversationId)} className="p-1.5 hover:bg-white/5 hover:text-error rounded-md text-amber-500 transition-colors" title="Stop">

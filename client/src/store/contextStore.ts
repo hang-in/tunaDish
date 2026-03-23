@@ -141,7 +141,6 @@ interface ContextState {
   projectContext: ProjectContext | null;
   memoryEntries: MemoryEntry[];
   gitBranches: GitBranch[];
-  convBranches: ConversationBranch[];
   /** 프로젝트별 대화 브랜치 맵 (사이드바에서 항상 표시용) */
   convBranchesByProject: Record<string, ConversationBranch[]>;
   reviews: ReviewEntry[];
@@ -153,6 +152,9 @@ interface ContextState {
   engineList: Record<string, string[]>;
   /** Phase 4: 마지막 RPC 결과 (toast 표시용) */
   lastRpcResult: { method: string; ok: boolean; data: Record<string, unknown> } | null;
+
+  /** Derived: convBranches for the currently active project (from convBranchesByProject) */
+  getConvBranches: () => ConversationBranch[];
 
   setActiveTab: (tab: ContextTab) => void;
   setProjectContext: (ctx: ProjectContext) => void;
@@ -172,12 +174,11 @@ interface ContextState {
   clear: () => void;
 }
 
-export const useContextStore = create<ContextState>((set) => ({
+export const useContextStore = create<ContextState>((set, get) => ({
   activeTab: 'overview',
   projectContext: null,
   memoryEntries: [],
   gitBranches: [],
-  convBranches: [],
   convBranchesByProject: {},
   reviews: [],
   progress: null,
@@ -186,6 +187,12 @@ export const useContextStore = create<ContextState>((set) => ({
   codeSearchLoading: false,
   engineList: {},
   lastRpcResult: null,
+
+  getConvBranches: () => {
+    const state = get();
+    const project = state.projectContext?.project;
+    return project ? (state.convBranchesByProject[project] ?? []) : [];
+  },
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
@@ -200,7 +207,6 @@ export const useContextStore = create<ContextState>((set) => ({
       projectContext: ctx,
       memoryEntries: ctx.memoryEntries,
       gitBranches: ctx.activeBranches,
-      convBranches: mergedBranches,
       convBranchesByProject: {
         ...state.convBranchesByProject,
         [ctx.project]: mergedBranches,
@@ -229,12 +235,11 @@ export const useContextStore = create<ContextState>((set) => ({
         ...state.convBranchesByProject,
         [projectKey]: filtered,
       },
-      ...(state.projectContext?.project === projectKey ? { convBranches: filtered } : {}),
     };
   }),
 
   setMemoryEntries: (entries) => set({ memoryEntries: entries }),
-  setBranches: (git, conv) => set({ gitBranches: git, convBranches: filterDismissed(conv) }),
+  setBranches: (git, _conv) => set({ gitBranches: git }),
   setReviews: (reviews) => set({ reviews }),
   setProgress: (progress) => set({ progress }),
   setCodeSearchResults: (results) => set({ codeSearchResults: results, codeSearchLoading: false }),
@@ -248,31 +253,33 @@ export const useContextStore = create<ContextState>((set) => ({
   })),
 
   removeConvBranch: (branchId) => set((state) => {
-    const convBranches = state.convBranches.filter(b => b.id !== branchId);
-    // 프로젝트별 맵에서도 제거
     const updated: Record<string, ConversationBranch[]> = {};
     for (const [key, list] of Object.entries(state.convBranchesByProject)) {
       updated[key] = list.filter(b => b.id !== branchId);
     }
-    return { convBranches, convBranchesByProject: updated };
+    return { convBranchesByProject: updated };
   }),
 
   renameConvBranch: (branchId, label) => set((state) => {
-    const convBranches = state.convBranches.map(b => b.id === branchId ? { ...b, label } : b);
     const updated: Record<string, ConversationBranch[]> = {};
     for (const [key, list] of Object.entries(state.convBranchesByProject)) {
       updated[key] = list.map(b => b.id === branchId ? { ...b, label } : b);
     }
-    return { convBranches, convBranchesByProject: updated };
+    return { convBranchesByProject: updated };
   }),
 
   clear: () => set({
     projectContext: null,
     memoryEntries: [],
     gitBranches: [],
-    convBranches: [],
     // convBranchesByProject는 clear하지 않음 — 다른 프로젝트 데이터 유지
     reviews: [],
     progress: null,
   }),
 }));
+
+/** Selector: convBranches for the currently active project (derived from convBranchesByProject) */
+export function selectConvBranches(state: ContextState): ConversationBranch[] {
+  const project = state.projectContext?.project;
+  return project ? (state.convBranchesByProject[project] ?? []) : [];
+}
