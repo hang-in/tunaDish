@@ -6,7 +6,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 [![Tauri v2](https://img.shields.io/badge/Tauri-v2-orange.svg)](https://v2.tauri.app/)
 
-A lightweight desktop chat client for AI coding agents
+A lightweight chat client for AI coding agents — Desktop & Android
 
 [**English**](#background) | [한국어](#한국어) | [日本語](#日本語)
 
@@ -46,6 +46,10 @@ Claude Code / Codex / Gemini CLI (AI agents)
 - **Per-message Model Tracking** — Each message records which engine/model was used
 - **`!` Commands** — Quick access to tunaPi commands via command palette
 - **Dynamic Engine/Model Switching** — Change engines and models mid-conversation with `!model`
+- **SQLite Persistent Storage** — Conversations, branches, and memos saved locally via IndexedDB
+- **Chat Virtualization** — Smooth scrolling even with thousands of messages (react-virtuoso)
+- **Message Search** — Full-text search across all conversations
+- **Mobile UI** — Responsive layout with drawer navigation, bottom sheets, and touch gestures
 - **Window State Persistence** — Remembers window position and size across restarts
 
 ### Tech Stack
@@ -56,7 +60,9 @@ Claude Code / Codex / Gemini CLI (AI agents)
 | UI | React + TypeScript + Tailwind CSS |
 | Components | shadcn/ui (base-ui) |
 | State | Zustand |
+| Storage | IndexedDB (Dexie.js) |
 | Protocol | WebSocket + JSON-RPC 2.0 |
+| Platforms | Windows, Linux, macOS, Android |
 | Backend | tunaPi (Python) — separate repo |
 
 ### Prerequisites
@@ -121,7 +127,7 @@ Type `!` in the chat input to open the command palette.
 
 ### Current Status
 
-Sprint 7 (stabilization & tech debt) in progress.
+Core features complete. Stabilization & codebase refactoring done.
 
 Details: [docs/plans/development_plan.md](docs/plans/development_plan.md)
 
@@ -168,6 +174,10 @@ Claude Code / Codex / Gemini CLI (AI 에이전트)
 - **메시지별 모델 추적** — 모델을 바꿔가며 대화해도 각 메시지에 사용된 모델 표시
 - **`!` 커맨드** — 채팅창에서 `!`로 tunaPi 커맨드 빠르게 실행
 - **엔진/모델 동적 전환** — 대화 중 `!model`로 엔진과 모델을 자유롭게 변경
+- **SQLite 영구 저장소** — 대화, 브랜치, 메모를 IndexedDB로 로컬 저장
+- **채팅 가상화** — 수천 개 메시지에서도 부드러운 스크롤 (react-virtuoso)
+- **메시지 검색** — 전체 대화에서 풀텍스트 검색
+- **모바일 UI** — 드로어 네비게이션, 바텀시트, 터치 제스처 지원
 - **창 상태 기억** — 앱을 닫았다 열어도 이전 위치와 크기 유지
 
 ### 기술 스택
@@ -178,7 +188,9 @@ Claude Code / Codex / Gemini CLI (AI 에이전트)
 | UI | React + TypeScript + Tailwind CSS |
 | 컴포넌트 | shadcn/ui (base-ui 기반) |
 | 상태 관리 | Zustand |
+| 저장소 | IndexedDB (Dexie.js) |
 | 통신 | WebSocket + JSON-RPC 2.0 |
+| 플랫폼 | Windows, Linux, macOS, Android |
 | 백엔드 | tunaPi (Python) — 별도 레포 |
 
 ### 준비물
@@ -243,7 +255,7 @@ tunadish/
 
 ### 현재 상태
 
-Sprint 7 (안정화 & 기술 부채 해소) 진행 중.
+핵심 기능 구현 완료. 안정화 & 코드베이스 리팩토링 완료.
 
 자세한 내용: [docs/plans/development_plan.md](docs/plans/development_plan.md)
 
@@ -290,6 +302,10 @@ Claude Code / Codex / Gemini CLI (AIエージェント)
 - **メッセージごとのモデル追跡** — モデルを切り替えながら会話しても、各メッセージに使用されたモデルを表示
 - **`!` コマンド** — チャット入力で`!`を入力してtunaPiコマンドを素早く実行
 - **エンジン/モデル動的切替** — 会話中に`!model`でエンジンとモデルを自由に変更
+- **SQLite永続ストレージ** — 会話、ブランチ、メモをIndexedDBでローカル保存
+- **チャット仮想化** — 数千メッセージでもスムーズなスクロール（react-virtuoso）
+- **メッセージ検索** — 全会話でフルテキスト検索
+- **モバイルUI** — ドロワーナビゲーション、ボトムシート、タッチジェスチャー対応
 - **ウィンドウ状態記憶** — アプリを閉じて開いても前の位置とサイズを維持
 
 ### 技術スタック
@@ -300,7 +316,9 @@ Claude Code / Codex / Gemini CLI (AIエージェント)
 | UI | React + TypeScript + Tailwind CSS |
 | コンポーネント | shadcn/ui (base-ui) |
 | 状態管理 | Zustand |
+| ストレージ | IndexedDB (Dexie.js) |
 | 通信 | WebSocket + JSON-RPC 2.0 |
+| プラットフォーム | Windows, Linux, macOS, Android |
 | バックエンド | tunaPi (Python) — 別リポジトリ |
 
 ### 前提条件
