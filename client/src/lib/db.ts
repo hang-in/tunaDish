@@ -128,6 +128,26 @@ const MIGRATIONS: Migration[] = [
       `ALTER TABLE branches ADD COLUMN custom_label TEXT`,
     ],
   },
+  {
+    version: 3,
+    sql: `
+CREATE TABLE IF NOT EXISTS memos (
+  id              TEXT PRIMARY KEY,
+  message_id      TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  project_key     TEXT NOT NULL,
+  content         TEXT NOT NULL,
+  type            TEXT NOT NULL DEFAULT 'context',
+  tags            TEXT DEFAULT '[]',
+  created_at      INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_memo_project ON memos(project_key);
+CREATE INDEX IF NOT EXISTS idx_memo_message ON memos(message_id);
+
+INSERT OR IGNORE INTO schema_version (version) VALUES (3);
+    `,
+  },
 ];
 
 // ─── Init ────────────────────────────────────────────────────────
@@ -428,6 +448,64 @@ export async function loadBranches(conversationId: string): Promise<Array<{
      ORDER BY created_at DESC`,
     [conversationId],
   );
+}
+
+// ─── Memos ──────────────────────────────────────────────────────
+
+export async function insertMemo(memo: {
+  id: string;
+  messageId: string;
+  conversationId: string;
+  projectKey: string;
+  content: string;
+  type?: string;
+  tags?: string[];
+}): Promise<void> {
+  const d = await initDb();
+  await d.execute(
+    `INSERT OR IGNORE INTO memos (id, message_id, conversation_id, project_key, content, type, tags)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [memo.id, memo.messageId, memo.conversationId, memo.projectKey,
+     memo.content, memo.type ?? 'context', JSON.stringify(memo.tags ?? [])],
+  );
+}
+
+export async function deleteMemo(memoId: string): Promise<void> {
+  const d = await initDb();
+  await d.execute('DELETE FROM memos WHERE id = $1', [memoId]);
+}
+
+export async function deleteMemoByMessageId(messageId: string): Promise<void> {
+  const d = await initDb();
+  await d.execute('DELETE FROM memos WHERE message_id = $1', [messageId]);
+}
+
+export async function loadMemos(projectKey: string): Promise<Array<{
+  id: string; messageId: string; conversationId: string;
+  content: string; type: string; tags: string; createdAt: number;
+}>> {
+  const d = await initDb();
+  return d.select(
+    `SELECT id, message_id as messageId, conversation_id as conversationId,
+            content, type, tags, created_at as createdAt
+     FROM memos WHERE project_key = $1
+     ORDER BY created_at DESC`,
+    [projectKey],
+  );
+}
+
+export async function loadSavedMessageIds(projectKey: string): Promise<Set<string>> {
+  const d = await initDb();
+  const rows = await d.select<{ messageId: string }[]>(
+    'SELECT message_id as messageId FROM memos WHERE project_key = $1',
+    [projectKey],
+  );
+  return new Set(rows.map(r => r.messageId));
+}
+
+export async function deleteAllMemos(projectKey: string): Promise<void> {
+  const d = await initDb();
+  await d.execute('DELETE FROM memos WHERE project_key = $1', [projectKey]);
 }
 
 // ─── Search ──────────────────────────────────────────────────────

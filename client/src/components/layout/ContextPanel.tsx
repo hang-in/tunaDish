@@ -2,6 +2,7 @@ import { useSystemStore } from '@/store/systemStore';
 import { useContextStore, selectConvBranches, type ContextTab, type MemoryEntry, type GitBranch, type ConversationBranch, type CodeSearchResult } from '@/store/contextStore';
 import { useChatStore } from '@/store/chatStore';
 import { wsClient } from '@/lib/wsClient';
+import * as dbSync from '@/lib/dbSync';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -344,11 +345,10 @@ function BranchesTab() {
   };
 
   const handleDeleteConfirm = () => {
-    if (!deleteTarget || !activeConvId) return;
-    wsClient.sendRpc('branch.delete', {
-      conversation_id: activeConvId,
-      branch_id: deleteTarget.id,
-    });
+    if (!deleteTarget) return;
+    // 클라이언트 전용: SQLite에서 삭제 + store에서 제거
+    useContextStore.getState().removeConvBranch(deleteTarget.id);
+    dbSync.syncDeleteBranch(deleteTarget.id);
     setDeleteTarget(null);
   };
 

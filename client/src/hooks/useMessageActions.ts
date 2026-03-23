@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useChatStore } from '@/store/chatStore';
-import { useContextStore } from '@/store/contextStore';
+import { useContextStore, type MemoryEntry } from '@/store/contextStore';
 import { wsClient } from '@/lib/wsClient';
 import * as dbSync from '@/lib/dbSync';
 import { showToast } from '@/components/chat/ActionToast';
@@ -83,8 +83,41 @@ export function useMessageActions({ role, messageId, content, conversationId }: 
 
   const handleSave = useCallback(() => {
     if (!resolvedConvId) return;
-    wsClient.sendRpc('message.save', { conversation_id: resolvedConvId, message_id: messageId, content });
-    showToast('Saved to memory');
+    const ctxState = useContextStore.getState();
+    const alreadySaved = ctxState.savedMessageIds.has(messageId);
+    if (alreadySaved) {
+      // 토글: 이미 저장됨 → 삭제
+      const entry = ctxState.memoryEntries.find(e => e.source === `msg:${messageId}`);
+      if (entry) {
+        ctxState.removeMemoryEntry(entry.id);
+        dbSync.syncDeleteMemo(entry.id);
+      }
+      ctxState.unmarkMessageSaved(messageId);
+      dbSync.syncDeleteMemoByMessageId(messageId);
+      showToast('Removed from memory');
+    } else {
+      // 새로 저장
+      const projectKey = useChatStore.getState().activeProjectKey ?? '';
+      const memoId = crypto.randomUUID();
+      const firstLine = (content || '').split('\n')[0].trim();
+      const title = firstLine.length > 10 ? firstLine.slice(0, 10) + '\u2026' : firstLine;
+      const entry: MemoryEntry = {
+        id: memoId,
+        type: 'context',
+        title,
+        content,
+        source: `msg:${messageId}`,
+        tags: [],
+        timestamp: Date.now(),
+      };
+      ctxState.setMemoryEntries([...ctxState.memoryEntries, entry]);
+      ctxState.markMessageSaved(messageId);
+      dbSync.syncMemo({
+        id: memoId, messageId, conversationId: resolvedConvId,
+        projectKey, content, type: 'context',
+      });
+      showToast('Saved to memory');
+    }
   }, [resolvedConvId, messageId, content]);
 
   const handleBranch = useCallback(() => {

@@ -9,6 +9,7 @@ import {
   CaretUp,
   Robot,
   GitFork,
+  BookmarkSimple,
 } from '@phosphor-icons/react';
 import { MessageActions, MobileContextMenu } from './MessageActions';
 import { InlineEdit } from './MessageActions';
@@ -133,6 +134,9 @@ export const MessageView = memo(function MessageView({ msg, isGrouped, isRoleSwi
   const isEditing = useChatStore(s => s.editingMsgId === msg.id);
   const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+  // 메모 저장 여부
+  const isSaved = useContextStore(s => s.savedMessageIds.has(msg.id));
+
   // 이 메시지에서 분기된 브랜치 목록 (selector 안에서 filter 금지 — 무한루프 방지)
   const allConvBranches = useContextStore(s => s.convBranchesByProject);
   const branchesFromHere = useMemo(() => {
@@ -211,6 +215,7 @@ export const MessageView = memo(function MessageView({ msg, isGrouped, isRoleSwi
                 </div>
                 <span className="msg-row__name tracking-wide mt-0.5">YOU</span>
                 <span className="msg-row__time mt-0.5">{timeStr}</span>
+                {isSaved && <span title="Saved to memory"><BookmarkSimple size={12} weight="fill" className="text-blue-400/70 mt-0.5" /></span>}
               </>
             ) : (
               <>
@@ -230,6 +235,7 @@ export const MessageView = memo(function MessageView({ msg, isGrouped, isRoleSwi
                 {project && <span className="text-[10px] text-on-surface-variant/50 font-mono mt-0.5">{project}</span>}
                 {shortToken && <span className="text-[10px] text-on-surface-variant/25 font-mono mt-0.5" title={resumeToken ?? undefined}>{shortToken}</span>}
                 <span className="msg-row__time mt-0.5">{timeStr}</span>
+                {isSaved && <span title="Saved to memory"><BookmarkSimple size={12} weight="fill" className="text-blue-400/70 mt-0.5" /></span>}
                 {isStreaming && <CircleNotch size={12} weight="bold" className="text-emerald-400 animate-spin mt-0.5" />}
               </>
             )}

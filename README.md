@@ -46,7 +46,7 @@ Claude Code / Codex / Gemini CLI (AI agents)
 - **Per-message Model Tracking** — Each message records which engine/model was used
 - **`!` Commands** — Quick access to tunaPi commands via command palette
 - **Dynamic Engine/Model Switching** — Change engines and models mid-conversation with `!model`
-- **SQLite Persistent Storage** — Conversations, branches, and memos saved locally via IndexedDB
+- **SQLite Persistent Storage** — Conversations, branches, and memos saved locally via SQLite (tauri-plugin-sql)
 - **Chat Virtualization** — Smooth scrolling even with thousands of messages (react-virtuoso)
 - **Message Search** — Full-text search across all conversations
 - **Mobile UI** — Responsive layout with drawer navigation, bottom sheets, and touch gestures
@@ -60,7 +60,7 @@ Claude Code / Codex / Gemini CLI (AI agents)
 | UI | React + TypeScript + Tailwind CSS |
 | Components | shadcn/ui (base-ui) |
 | State | Zustand |
-| Storage | IndexedDB (Dexie.js) |
+| Storage | SQLite (tauri-plugin-sql) |
 | Protocol | WebSocket + JSON-RPC 2.0 |
 | Platforms | Windows, Linux, macOS, Android |
 | Backend | tunaPi (Python) — separate repo |
@@ -174,7 +174,7 @@ Claude Code / Codex / Gemini CLI (AI 에이전트)
 - **메시지별 모델 추적** — 모델을 바꿔가며 대화해도 각 메시지에 사용된 모델 표시
 - **`!` 커맨드** — 채팅창에서 `!`로 tunaPi 커맨드 빠르게 실행
 - **엔진/모델 동적 전환** — 대화 중 `!model`로 엔진과 모델을 자유롭게 변경
-- **SQLite 영구 저장소** — 대화, 브랜치, 메모를 IndexedDB로 로컬 저장
+- **SQLite 영구 저장소** — 대화, 브랜치, 메모를 SQLite로 로컬 저장 (tauri-plugin-sql)
 - **채팅 가상화** — 수천 개 메시지에서도 부드러운 스크롤 (react-virtuoso)
 - **메시지 검색** — 전체 대화에서 풀텍스트 검색
 - **모바일 UI** — 드로어 네비게이션, 바텀시트, 터치 제스처 지원
@@ -188,7 +188,7 @@ Claude Code / Codex / Gemini CLI (AI 에이전트)
 | UI | React + TypeScript + Tailwind CSS |
 | 컴포넌트 | shadcn/ui (base-ui 기반) |
 | 상태 관리 | Zustand |
-| 저장소 | IndexedDB (Dexie.js) |
+| 저장소 | SQLite (tauri-plugin-sql) |
 | 통신 | WebSocket + JSON-RPC 2.0 |
 | 플랫폼 | Windows, Linux, macOS, Android |
 | 백엔드 | tunaPi (Python) — 별도 레포 |
@@ -302,7 +302,7 @@ Claude Code / Codex / Gemini CLI (AIエージェント)
 - **メッセージごとのモデル追跡** — モデルを切り替えながら会話しても、各メッセージに使用されたモデルを表示
 - **`!` コマンド** — チャット入力で`!`を入力してtunaPiコマンドを素早く実行
 - **エンジン/モデル動的切替** — 会話中に`!model`でエンジンとモデルを自由に変更
-- **SQLite永続ストレージ** — 会話、ブランチ、メモをIndexedDBでローカル保存
+- **SQLite永続ストレージ** — 会話、ブランチ、メモをSQLiteでローカル保存（tauri-plugin-sql）
 - **チャット仮想化** — 数千メッセージでもスムーズなスクロール（react-virtuoso）
 - **メッセージ検索** — 全会話でフルテキスト検索
 - **モバイルUI** — ドロワーナビゲーション、ボトムシート、タッチジェスチャー対応
@@ -316,7 +316,7 @@ Claude Code / Codex / Gemini CLI (AIエージェント)
 | UI | React + TypeScript + Tailwind CSS |
 | コンポーネント | shadcn/ui (base-ui) |
 | 状態管理 | Zustand |
-| ストレージ | IndexedDB (Dexie.js) |
+| ストレージ | SQLite (tauri-plugin-sql) |
 | 通信 | WebSocket + JSON-RPC 2.0 |
 | プラットフォーム | Windows, Linux, macOS, Android |
 | バックエンド | tunaPi (Python) — 別リポジトリ |

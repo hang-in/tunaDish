@@ -89,6 +89,9 @@ export interface RenderedMessage {
   text: string;
 }
 
+// 삭제된 메시지 ID 추적 (세션 동안만 유지, setHistory에서 서버 히스토리 필터링용)
+const deletedMessageIds = new Set<string>();
+
 // --- Store ---
 
 interface ChatState {
@@ -251,14 +254,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setHistory: (convId, serverMessages) => set((state) => {
     const local = state.messages[convId] ?? [];
-    // 진행 중인 메시지만 보존 (streaming/sending). DB 캐시 메시지는 서버 히스토리로 교체.
-    const inFlight = local.filter(
-      m => (m.status === 'streaming' || m.status === 'sending'),
-    );
+    // 로컬에서 삭제된 메시지는 서버 히스토리에서도 제외
+    const filtered = serverMessages.filter(m => !deletedMessageIds.has(m.id));
+    // 서버 히스토리에 없는 로컬 메시지를 보존 (streaming/sending + 최근 done 메시지)
+    const serverIds = new Set(filtered.map(m => m.id));
+    const localOnly = local.filter(m => !serverIds.has(m.id) && !deletedMessageIds.has(m.id));
     return {
       messages: {
         ...state.messages,
-        [convId]: inFlight.length > 0 ? [...serverMessages, ...inFlight] : serverMessages,
+        [convId]: localOnly.length > 0 ? [...filtered, ...localOnly] : filtered,
       },
     };
   }),
@@ -302,6 +306,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   deleteMessage: (ref) => set((state) => {
     const convId = ref.channel_id;
+    deletedMessageIds.add(ref.message_id);
     const arr = (state.messages[convId] ?? []).filter(m => m.id !== ref.message_id);
     return { messages: { ...state.messages, [convId]: arr } };
   }),
@@ -323,6 +328,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   }),
 
   removeMessage: (convId, msgId) => set((state) => {
+    deletedMessageIds.add(msgId);
     const arr = (state.messages[convId] ?? []).filter(m => m.id !== msgId);
     return { messages: { ...state.messages, [convId]: arr } };
   }),

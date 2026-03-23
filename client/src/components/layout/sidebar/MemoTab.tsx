@@ -1,8 +1,7 @@
 import { useChatStore } from '@/store/chatStore';
 import { useContextStore, type MemoryEntry } from '@/store/contextStore';
-import { useSystemStore } from '@/store/systemStore';
-import { wsClient } from '@/lib/wsClient';
-import { useEffect, useState } from 'react';
+import * as dbSync from '@/lib/dbSync';
+import { useState, useEffect } from 'react';
 import {
   BookOpen,
   Trash,
@@ -17,16 +16,19 @@ export function memoTitle(entry: MemoryEntry): string {
 
 function MemoRow({ entry }: { entry: MemoryEntry }) {
   const [expanded, setExpanded] = useState(false);
-  const activeConvId = useChatStore(s => s.activeConversationId);
-  const activeProjectKey = useChatStore(s => s.activeProjectKey);
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!activeProjectKey) return;
-    useContextStore.getState().removeMemoryEntry(entry.id);
-    const params: Record<string, string> = { id: entry.id, project: activeProjectKey };
-    if (activeConvId) params.conversation_id = activeConvId;
-    wsClient.sendRpc('memory.delete', params);
+    const ctxState = useContextStore.getState();
+
+    // source에서 messageId 추출하여 북마크 해제
+    const msgMatch = entry.source?.match(/^msg:(.+)$/);
+    if (msgMatch) {
+      ctxState.unmarkMessageSaved(msgMatch[1]);
+    }
+
+    ctxState.removeMemoryEntry(entry.id);
+    dbSync.syncDeleteMemo(entry.id);
   };
 
   return (
@@ -59,19 +61,25 @@ function MemoRow({ entry }: { entry: MemoryEntry }) {
 
 export function MemoTabContent() {
   const memoryEntries = useContextStore(s => s.memoryEntries);
-  const activeConvId = useChatStore(s => s.activeConversationId);
   const activeProjectKey = useChatStore(s => s.activeProjectKey);
-  const isConnected = useSystemStore(s => s.isConnected);
 
-  // memoryEntries는 project.context.result에서 갱신됨
-  // 탭 전환 시 activeConvId가 있으면 project.context 재요청
+  // 탭 열릴 때 SQLite에서 최신 메모 로드
   useEffect(() => {
-    if (!isConnected || !activeProjectKey || !activeConvId) return;
-    wsClient.sendRpc('project.context', {
-      project: activeProjectKey,
-      conversation_id: activeConvId,
+    if (!activeProjectKey) return;
+    dbSync.loadMemosFromDb(activeProjectKey).then(memos => {
+      if (memos.length === 0) return;
+      const entries = memos.map(m => ({
+        id: m.id,
+        type: m.type as 'decision' | 'review' | 'idea' | 'context',
+        title: (m.content || '').split('\n')[0].slice(0, 10),
+        content: m.content,
+        source: `msg:${m.messageId}`,
+        tags: JSON.parse(m.tags || '[]') as string[],
+        timestamp: m.createdAt * 1000,
+      }));
+      useContextStore.getState().setMemoryEntries(entries);
     });
-  }, [activeProjectKey, isConnected]);
+  }, [activeProjectKey]);
 
   if (memoryEntries.length === 0) {
     return <EmptyTab text="저장된 메모 없음" />;

@@ -1,23 +1,5 @@
 import { create } from 'zustand';
 
-// --- Dismissed branches (로컬에서 숨긴 브랜치, 서버가 삭제를 거부하는 경우) ---
-const LS_DISMISSED = 'tunadish:dismissedBranches';
-function loadDismissed(): Set<string> {
-  try { return new Set(JSON.parse(localStorage.getItem(LS_DISMISSED) ?? '[]')); } catch { return new Set(); }
-}
-function saveDismissed(ids: Set<string>) {
-  try { localStorage.setItem(LS_DISMISSED, JSON.stringify([...ids])); } catch { /* ignore */ }
-}
-export function dismissBranch(branchId: string) {
-  const ids = loadDismissed();
-  ids.add(branchId);
-  saveDismissed(ids);
-}
-function filterDismissed<T extends { id: string }>(branches: T[]): T[] {
-  const ids = loadDismissed();
-  if (ids.size === 0) return branches;
-  return branches.filter(b => !ids.has(b.id));
-}
 
 // --- Context Panel types (from project.context RPC) ---
 
@@ -152,6 +134,8 @@ interface ContextState {
   engineList: Record<string, string[]>;
   /** Phase 4: 마지막 RPC 결과 (toast 표시용) */
   lastRpcResult: { method: string; ok: boolean; data: Record<string, unknown> } | null;
+  /** 메모로 저장된 메시지 ID (로컬 추적, localStorage 영속화) */
+  savedMessageIds: Set<string>;
 
   /** Derived: convBranches for the currently active project (from convBranchesByProject) */
   getConvBranches: () => ConversationBranch[];
@@ -171,6 +155,10 @@ interface ContextState {
   removeConvBranch: (branchId: string) => void;
   renameConvBranch: (branchId: string, label: string) => void;
   removeMemoryEntry: (entryId: string) => void;
+  markMessageSaved: (messageId: string) => void;
+  unmarkMessageSaved: (messageId: string) => void;
+  /** DB hydration 시 savedMessageIds 일괄 세팅 */
+  hydrateMessageIds: (ids: Set<string>) => void;
   clear: () => void;
 }
 
@@ -187,6 +175,7 @@ export const useContextStore = create<ContextState>((set, get) => ({
   codeSearchLoading: false,
   engineList: {},
   lastRpcResult: null,
+  savedMessageIds: new Set<string>(),
 
   getConvBranches: () => {
     const state = get();
@@ -197,12 +186,18 @@ export const useContextStore = create<ContextState>((set, get) => ({
   setActiveTab: (tab) => set({ activeTab: tab }),
 
   setProjectContext: (ctx) => set((state) => {
-    // 로컬에서 이름을 변경했을 수 있으므로 기존 label 우선
-    const existingByProject = new Map((state.convBranchesByProject[ctx.project] ?? []).map(b => [b.id, b]));
-    const mergedBranches = filterDismissed(ctx.convBranches.map(b => ({
+    // 서버 브랜치 기반으로 병합, 로컬(DB 복원) 브랜치 보존
+    const existing = state.convBranchesByProject[ctx.project] ?? [];
+    const existingById = new Map(existing.map(b => [b.id, b]));
+    const serverIds = new Set(ctx.convBranches.map(b => b.id));
+    // 서버 브랜치: 로컬 label 우선
+    const fromServer = ctx.convBranches.map(b => ({
       ...b,
-      label: existingByProject.get(b.id)?.label ?? b.label,
-    })));
+      label: existingById.get(b.id)?.label ?? b.label,
+    }));
+    // 로컬에만 있는 브랜치(DB 복원 등)도 유지
+    const localOnly = existing.filter(b => !serverIds.has(b.id));
+    const mergedBranches = [...fromServer, ...localOnly];
     return {
       projectContext: ctx,
       memoryEntries: ctx.memoryEntries,
@@ -229,7 +224,7 @@ export const useContextStore = create<ContextState>((set, get) => ({
         if (!branches.some(b => b.id === ex.id)) merged.push(ex);
       }
     }
-    const filtered = filterDismissed(merged);
+    const filtered = merged;
     return {
       convBranchesByProject: {
         ...state.convBranchesByProject,
@@ -251,6 +246,24 @@ export const useContextStore = create<ContextState>((set, get) => ({
   removeMemoryEntry: (entryId) => set((state) => ({
     memoryEntries: state.memoryEntries.filter(e => e.id !== entryId),
   })),
+
+  markMessageSaved: (messageId) => set((state) => {
+    const next = new Set(state.savedMessageIds);
+    next.add(messageId);
+    return { savedMessageIds: next };
+  }),
+
+  unmarkMessageSaved: (messageId) => set((state) => {
+    const next = new Set(state.savedMessageIds);
+    next.delete(messageId);
+    return { savedMessageIds: next };
+  }),
+
+  hydrateMessageIds: (ids) => set((state) => {
+    const merged = new Set(state.savedMessageIds);
+    for (const id of ids) merged.add(id);
+    return { savedMessageIds: merged };
+  }),
 
   removeConvBranch: (branchId) => set((state) => {
     const updated: Record<string, ConversationBranch[]> = {};

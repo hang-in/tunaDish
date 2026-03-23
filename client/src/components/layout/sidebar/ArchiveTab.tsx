@@ -1,7 +1,6 @@
 import { useChatStore } from '@/store/chatStore';
-import { useContextStore, dismissBranch, type ConversationBranch } from '@/store/contextStore';
+import { useContextStore, type ConversationBranch } from '@/store/contextStore';
 import { useSystemStore } from '@/store/systemStore';
-import { wsClient } from '@/lib/wsClient';
 import * as dbSync from '@/lib/dbSync';
 import { cn } from '@/lib/utils';
 import {
@@ -28,12 +27,7 @@ export function ArchiveTabContent() {
   }
 
   const removeBranch = (b: ConversationBranch) => {
-    const convId = b.rtSessionId ?? useChatStore.getState().activeConversationId;
-    if (convId) {
-      wsClient.sendRpc('branch.delete', { conversation_id: convId, branch_id: b.id });
-    }
-    // 서버가 거부해도 (adopted 등) 로컬에서 제거 + 숨김 목록에 추가
-    dismissBranch(b.id);
+    // 클라이언트 전용: SQLite에서 삭제 + store에서 제거
     useContextStore.getState().removeConvBranch(b.id);
     dbSync.syncDeleteBranch(b.id);
   };

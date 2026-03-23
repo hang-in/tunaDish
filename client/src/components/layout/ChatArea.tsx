@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, useCallback } from 'react';
+import { useRef, useEffect, useMemo, useCallback, useState } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { useChatStore, type ChatMessage } from '@/store/chatStore';
 import { useSystemStore } from '@/store/systemStore';
@@ -9,6 +9,7 @@ import { Robot } from '@phosphor-icons/react';
 import { MessageView } from '@/components/chat/MessageView';
 import { InputArea } from '@/components/chat/InputArea';
 import { ActionToast } from '@/components/chat/ActionToast';
+import { FileViewer } from '@/components/chat/FileViewer';
 import { computeMsgMeta } from '@/lib/messageGrouping';
 const EMPTY_MESSAGES: ChatMessage[] = [];
 
@@ -96,6 +97,8 @@ function StatusStrip() {
 
 export function ChatArea() {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const inputAreaRef = useRef<HTMLDivElement>(null);
+  const [inputAreaHeight, setInputAreaHeight] = useState(200); // default fallback
   const activeConversationId = useChatStore(s => s.activeConversationId);
   const isMockMode = useChatStore(s => s.isMockMode);
   const messagesRaw = useChatStore(s =>
@@ -129,6 +132,19 @@ export function ChatArea() {
     }
     wsClient.sendRpc('conversation.history', histParams);
   }, [activeConversationId, projectKey, isMockMode, isConnected]);
+
+  // InputArea 높이를 동적으로 측정하여 Footer 패딩에 반영
+  useEffect(() => {
+    const el = inputAreaRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setInputAreaHeight(entry.contentRect.height + 32); // +32 for padding
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // 메시지 메타데이터 사전 계산 (O(n) 1회, O(n²) → O(n))
   const msgMeta = useMemo(() => computeMsgMeta(messages), [messages]);
@@ -181,6 +197,7 @@ export function ChatArea() {
   return (
     <div className="flex flex-col flex-1 overflow-hidden bg-[#0e0e0e] relative h-full">
       <ActionToast />
+      <FileViewer />
       <div className="flex-1 relative overflow-hidden flex flex-col">
         {!activeConversationId || messages.length === 0 ? (
           <EmptyState />
@@ -198,11 +215,13 @@ export function ChatArea() {
             style={{ height: '100%' }}
             components={{
               Header: () => <div className="pt-4" />,
-              Footer: () => <div className="pb-4" />,
+              Footer: () => <div style={{ height: inputAreaHeight }} />,
             }}
           />
         )}
-        <InputArea />
+        <div ref={inputAreaRef} className="absolute bottom-0 left-0 right-0 z-10">
+          <InputArea />
+        </div>
       </div>
       <StatusStrip />
     </div>

@@ -8,6 +8,7 @@ import { useIsMobile } from '@/lib/useIsMobile';
 import { wsClient } from '@/lib/wsClient';
 import * as dbSync from '@/lib/dbSync';
 import { cn } from '@/lib/utils';
+import { showToast } from '@/components/chat/ActionToast';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import {
   PaperPlaneRight,
@@ -104,6 +105,7 @@ function QuickChipEngine({ convId, compact }: { convId: string; compact?: boolea
     if (isRunning) return;
     updateSettings(convId, { engine: eng, model: m });
     wsClient.sendRpc('model.set', { conversation_id: convId, engine: eng, model: m });
+    showToast(`Model → ${eng}/${m}`);
     setOpen(false);
   };
 
@@ -111,6 +113,7 @@ function QuickChipEngine({ convId, compact }: { convId: string; compact?: boolea
     if (isRunning) return;
     updateSettings(convId, { engine: eng, model: undefined });
     wsClient.sendRpc('model.set', { conversation_id: convId, engine: eng });
+    showToast(`Engine → ${eng}`);
     setOpen(false);
   };
 
@@ -179,21 +182,29 @@ function QuickChipPersona({ convId, compact }: { convId: string; compact?: boole
   const { persona } = useConvSettings(convId);
   const updateSettings = useChatStore(s => s.updateConvSettings);
   const [open, setOpen] = useState(false);
+  const isRunning = useRunStore(s => (s.activeRuns[convId] ?? 'idle') !== 'idle');
 
   const PRESETS = ['default', 'concise', 'creative', 'technical'];
 
   const selectPersona = (p: string) => {
+    if (isRunning) return;
     const value = p === 'default' ? '' : p;
     updateSettings(convId, { persona: value || undefined });
     wsClient.sendRpc('persona.set', { conversation_id: convId, persona: value });
+    showToast(`Persona → ${p}`);
     setOpen(false);
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={v => { if (isRunning) return; setOpen(v); }}>
       <PopoverTrigger
-        className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium
-          bg-white/5 hover:bg-white/10 text-on-surface-variant/70 hover:text-on-surface transition-colors cursor-pointer"
+        disabled={isRunning}
+        className={cn(
+          "flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors",
+          isRunning
+            ? "bg-white/5 text-on-surface-variant/30 cursor-not-allowed"
+            : "bg-white/5 hover:bg-white/10 text-on-surface-variant/70 hover:text-on-surface cursor-pointer",
+        )}
       >
         <Brain size={12} className="text-violet-400" />
         {!compact && <span className="hidden sm:inline">{persona || 'default'}</span>}
@@ -224,18 +235,26 @@ function QuickChipTrigger({ convId, compact }: { convId: string; compact?: boole
   const { triggerMode: trigger } = useConvSettings(convId);
   const updateSettings = useChatStore(s => s.updateConvSettings);
   const [open, setOpen] = useState(false);
+  const isRunning = useRunStore(s => (s.activeRuns[convId] ?? 'idle') !== 'idle');
 
   const selectTrigger = (mode: string) => {
+    if (isRunning) return;
     updateSettings(convId, { triggerMode: mode });
     wsClient.sendRpc('trigger.set', { conversation_id: convId, mode });
+    showToast(`Trigger → ${mode}`);
     setOpen(false);
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={v => { if (isRunning) return; setOpen(v); }}>
       <PopoverTrigger
-        className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium
-          bg-white/5 hover:bg-white/10 text-on-surface-variant/70 hover:text-on-surface transition-colors cursor-pointer"
+        disabled={isRunning}
+        className={cn(
+          "flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors",
+          isRunning
+            ? "bg-white/5 text-on-surface-variant/30 cursor-not-allowed"
+            : "bg-white/5 hover:bg-white/10 text-on-surface-variant/70 hover:text-on-surface cursor-pointer",
+        )}
       >
         <Broadcast size={12} className="text-emerald-400" />
         {!compact && <span className="hidden sm:inline">{trigger}</span>}
@@ -383,7 +402,7 @@ export function InputArea({ overrideConversationId, compact }: { overrideConvers
   if (!activeConversationId) return null;
 
   return (
-    <div className="p-4 pb-8 flex-shrink-0 z-10">
+    <div className="p-4 pb-8 flex-shrink-0">
 {/* Reply banner */}
       {replyTo && (
         <div className="mb-1.5 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a1a1a]/95 border border-violet-400/20">

@@ -1,7 +1,9 @@
 import { useEffect, useMemo } from 'react';
 import { useSystemStore } from '@/store/systemStore';
 import { useChatStore, type ChatMessage } from '@/store/chatStore';
+import { useContextStore } from '@/store/contextStore';
 import { wsClient } from '@/lib/wsClient';
+import * as dbSync from '@/lib/dbSync';
 import { BottomSheet } from './BottomSheet';
 import { MessageView } from '@/components/chat/MessageView';
 import { InputArea } from '@/components/chat/InputArea';
@@ -45,7 +47,15 @@ export function MobileBranchSheet() {
 
   const handleArchive = () => {
     if (!convId || !branchId) return;
-    wsClient.sendRpc('branch.archive', { conversation_id: convId, branch_id: branchId });
+    // 클라이언트 전용: SQLite status 업데이트
+    dbSync.syncBranchStatus(branchId, 'archived');
+    const projectKey = useChatStore.getState().activeProjectKey ?? '';
+    const ctxState = useContextStore.getState();
+    const branches = ctxState.convBranchesByProject[projectKey] ?? [];
+    ctxState.setProjectConvBranches(projectKey, branches.map(b =>
+      b.id === branchId ? { ...b, status: 'archived' as const } : b
+    ));
+    useChatStore.getState().setActiveBranch(null);
     close();
   };
 

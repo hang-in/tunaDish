@@ -3,6 +3,7 @@ import { useSystemStore } from '@/store/systemStore';
 import { useChatStore, type ChatMessage } from '@/store/chatStore';
 import { useContextStore } from '@/store/contextStore';
 import { wsClient } from '@/lib/wsClient';
+import * as dbSync from '@/lib/dbSync';
 import { computeMsgMeta } from '@/lib/messageGrouping';
 import { MessageView } from '@/components/chat/MessageView';
 import { InputArea } from '@/components/chat/InputArea';
@@ -267,7 +268,17 @@ export function BranchPanel() {
             if (!convId || !branchId) return;
             const btn = document.activeElement as HTMLButtonElement;
             btn?.setAttribute('disabled', 'true');
-            wsClient.sendRpc('branch.archive', { conversation_id: convId, branch_id: branchId });
+            // 클라이언트 전용: SQLite status 업데이트 + store 반영
+            dbSync.syncBranchStatus(branchId, 'archived');
+            const ctxState = useContextStore.getState();
+            // convBranchesByProject에서 status 변경
+            const projectKey = useChatStore.getState().activeProjectKey ?? '';
+            const branches = ctxState.convBranchesByProject[projectKey] ?? [];
+            ctxState.setProjectConvBranches(projectKey, branches.map(b =>
+              b.id === branchId ? { ...b, status: 'archived' as const } : b
+            ));
+            useChatStore.getState().setActiveBranch(null);
+            closeBranchPanel();
           }}
           className="p-1 rounded text-on-surface-variant/40 hover:text-amber-400 hover:bg-amber-400/10 transition-colors disabled:opacity-30 disabled:pointer-events-none"
           title="보관"

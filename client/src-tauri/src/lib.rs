@@ -5,6 +5,11 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+#[tauri::command]
+fn read_text_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| format!("{}: {}", path, e))
+}
+
 #[cfg(desktop)]
 #[tauri::command]
 fn open_branch_window(
@@ -67,12 +72,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             open_branch_window,
-            close_branch_window
+            close_branch_window,
+            read_text_file
         ]);
 
     #[cfg(mobile)]
     let builder = builder
-        .invoke_handler(tauri::generate_handler![greet]);
+        .invoke_handler(tauri::generate_handler![greet, read_text_file]);
 
     builder
         .setup(|_app| {

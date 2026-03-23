@@ -1,4 +1,4 @@
-~/.codex/instructions.md ~/AGENTS.md# tunaDish 개발 계획
+# tunaDish 개발 계획
 
 > 버전: v5
 > 작성일: 2026-03-20

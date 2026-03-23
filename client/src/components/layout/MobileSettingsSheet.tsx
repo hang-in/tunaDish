@@ -5,6 +5,7 @@ import { useConvSettings } from '@/lib/useConvSettings';
 import { wsClient } from '@/lib/wsClient';
 import { BottomSheet } from './BottomSheet';
 import { cn } from '@/lib/utils';
+import { showToast } from '@/components/chat/ActionToast';
 import { Lightning, Brain, Broadcast } from '@phosphor-icons/react';
 
 const TRIGGER_MODES = [
@@ -33,17 +34,22 @@ export function MobileSettingsSheet() {
     if (isRunning) return;
     updateSettings(convId, { engine: eng, model: m });
     wsClient.sendRpc('model.set', { conversation_id: convId, engine: eng, ...(m ? { model: m } : {}) });
+    showToast(`Model → ${eng}${m ? `/${m}` : ''}`);
   };
 
   const selectPersona = (p: string) => {
+    if (isRunning) return;
     const value = p === 'default' ? '' : p;
     updateSettings(convId, { persona: value || undefined });
     wsClient.sendRpc('persona.set', { conversation_id: convId, persona: value });
+    showToast(`Persona → ${p}`);
   };
 
   const selectTrigger = (mode: string) => {
+    if (isRunning) return;
     updateSettings(convId, { triggerMode: mode });
     wsClient.sendRpc('trigger.set', { conversation_id: convId, mode });
+    showToast(`Trigger → ${mode}`);
   };
 
   return (

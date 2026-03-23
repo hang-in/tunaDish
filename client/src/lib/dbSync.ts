@@ -185,3 +185,48 @@ export function syncDeleteBranch(branchId: string) {
     db?.deleteBranch(branchId);
   });
 }
+
+// ─── Memos ──────────────────────────────────────────────────────
+
+export function syncMemo(memo: {
+  id: string; messageId: string; conversationId: string;
+  projectKey: string; content: string; type?: string; tags?: string[];
+}) {
+  fire(async () => {
+    const db = await getDb();
+    db?.insertMemo(memo);
+  });
+}
+
+export function syncDeleteMemo(memoId: string) {
+  fire(async () => {
+    const db = await getDb();
+    db?.deleteMemo(memoId);
+  });
+}
+
+export function syncDeleteMemoByMessageId(messageId: string) {
+  fire(async () => {
+    const db = await getDb();
+    db?.deleteMemoByMessageId(messageId);
+  });
+}
+
+export function syncDeleteAllMemos(projectKey: string) {
+  fire(async () => {
+    const db = await getDb();
+    db?.deleteAllMemos(projectKey);
+  });
+}
+
+export async function loadMemosFromDb(projectKey: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.loadMemos(projectKey);
+}
+
+export async function loadSavedMessageIdsFromDb(projectKey: string): Promise<Set<string>> {
+  const db = await getDb();
+  if (!db) return new Set();
+  return db.loadSavedMessageIds(projectKey);
+}

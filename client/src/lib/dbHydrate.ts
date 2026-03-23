@@ -68,6 +68,28 @@ export async function hydrateFromDb(): Promise<void> {
       ctxStore.setProjectConvBranches(pk, branches, true);
     }
 
+    // 4. 메모 로드 — 모든 프로젝트의 savedMessageIds 복원
+    const projectKeys = new Set(convs.map(c => c.projectKey));
+    for (const pk of projectKeys) {
+      const memos = await db.loadMemos(pk);
+      if (memos.length > 0) {
+        const entries = memos.map(m => ({
+          id: m.id,
+          type: m.type as 'decision' | 'review' | 'idea' | 'context',
+          title: (m.content || '').split('\n')[0].slice(0, 10),
+          content: m.content,
+          source: `msg:${m.messageId}`,
+          tags: JSON.parse(m.tags || '[]') as string[],
+          timestamp: m.createdAt * 1000,
+        }));
+        ctxStore.setMemoryEntries(entries);
+      }
+      const savedIds = await db.loadSavedMessageIds(pk);
+      if (savedIds.size > 0) {
+        ctxStore.hydrateMessageIds(savedIds);
+      }
+    }
+
     console.log('[dbHydrate] loaded', projects.length, 'projects,', convs.length, 'conversations from SQLite');
   } catch (err) {
     console.warn('[dbHydrate] failed, continuing without cache:', err);

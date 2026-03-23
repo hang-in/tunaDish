@@ -1,4 +1,4 @@
-# Handoff — 2026-03-23
+# Handoff — 2026-03-24
 
 ## tunadish란?
 
@@ -25,7 +25,7 @@ tunadish (Tauri + React)     ← 이 레포 (클라이언트 전용)
 - **DB**: SQLite (Tauri 로컬), `~/.tunadish/tunadish.db`
 - **상태 관리**: Zustand (chatStore, contextStore, systemStore, runStore)
 
-## 현재 상태 (2026-03-23)
+## 현재 상태 (2026-03-24)
 
 ### 완료
 - Sprint 7 안정화 완료
@@ -41,11 +41,20 @@ tunadish (Tauri + React)     ← 이 레포 (클라이언트 전용)
 - 분기 시점 메시지에 브랜치 태그 표시
 - `!cancel` 커맨드 팔레트 추가
 - 타입 에러 전부 해결 (유닛 테스트 126/126 통과)
+- 채팅 가상화 (react-virtuoso) + 스크롤 위치 안정화
+- 코드베이스 구조 개선 (Phase 1-6 리팩토링)
+- **FileViewer**: 채팅 내 파일 경로 클릭 → 팝업 뷰어 (Tauri read_text_file)
+  - 인라인 코드, 테이블 셀, 마크다운 링크 내 경로 자동 감지
+  - 상대 경로 → 프로젝트 기준 절대 경로 자동 변환
+  - 마크다운 파일은 렌더링, 기타 파일은 원문 표시
+  - 팝업 크기 조절 가능 (resize)
+- **메시지 안정성 개선**: setHistory 머지 로직 수정 (로컬 메시지 보존)
+- **삭제 메시지 추적**: deletedMessageIds로 세션 전환 시 재출현 방지
+- **InputArea 투명 배경 복원**: absolute + ResizeObserver 동적 높이 측정
 
 ### 알려진 이슈
 - mattermost → tunadish 프로젝트 세션: resume token이 터미널 세션과 충돌 → `!new`로 임시 해결
 - tunapi Phase 2 미완: message.new에 engine/model 첨부, model.set 엔진 라우팅
-- DB 쓰기가 16:40 이후 멈춤 — 마이그레이션 v2 (custom_label) 이후 확인 필요
 
 ### 진행 중 / 계획된 기능
 - **스킬 시스템**: 도메인 지식 패키지, tunadish가 직접 관리 (tunapi는 transport)
@@ -71,7 +80,7 @@ tunadish/
   ├─ client/
   │   ├─ src/
   │   │   ├─ components/     ← UI 컴포넌트
-  │   │   │   ├─ chat/       ← MessageView, InputArea, MessageActions
+  │   │   │   ├─ chat/       ← MessageView, InputArea, FileViewer, MarkdownComponents
   │   │   │   ├─ layout/     ← ChatArea, SidebarTree, BranchPanel, ContextPanel
   │   │   │   └─ ui/         ← shadcn/ui 기본 컴포넌트
   │   │   ├─ store/          ← Zustand stores

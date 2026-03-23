@@ -133,10 +133,114 @@ function ScrollTable({ children, node: _node, ...rest }: ComponentPropsWithoutRe
   );
 }
 
+// ── 인라인 코드: 파일 경로 감지 → FileViewer 연동 ───────────────
+
+// 문서 확장자 목록 (파일 경로 감지용)
+const DOC_EXTS = 'md|mdx|txt|json|yaml|yml|toml|xml|csv|log|ts|tsx|js|jsx|py|rs|go|java|sh|css|html|sql|env|markdown';
+// 파일 경로 패턴: 절대경로, 상대경로(dir/file.ext) 매칭. 단독 파일명은 제외 (위치 불명확)
+const FILE_PATH_RE = new RegExp(`^((?:[A-Za-z]:)?(?:[\\\\/][^\\\\/:\\s]+)+\\.(?:${DOC_EXTS})|(?:[\\w.-]+[\\\\/])+[\\w.-]+\\.(?:${DOC_EXTS}))(?::(\\d+))?$`);
+
+function InlineCode({ children, node: _node, className, ...rest }: ComponentPropsWithoutRef<'code'> & { node?: unknown }) {
+  // 코드블록 내부 <code>는 그대로 패스 (CodeBlock이 처리)
+  if (className?.includes('language-')) {
+    return <code className={className} {...rest}>{children}</code>;
+  }
+  const text = typeof children === 'string' ? children : '';
+  const match = text.match(FILE_PATH_RE);
+
+  if (match) {
+    const filePath = match[1];
+    return (
+      <code
+        {...rest}
+        className="text-[13px] text-blue-300/80 hover:text-blue-300 cursor-pointer underline underline-offset-2 decoration-blue-400/30 transition-colors before:content-none after:content-none"
+        onClick={() => {
+          // lazy import to avoid circular deps
+          import('./FileViewer').then(m => m.useFileViewerStore.getState().openFile(filePath));
+        }}
+        title={`파일 열기: ${filePath}`}
+      >
+        {children}
+      </code>
+    );
+  }
+
+  return <code {...rest}>{children}</code>;
+}
+
+// ── 텍스트 내 파일 경로 자동 링크 변환 ───────────────────────────
+
+// 텍스트 중간에 있는 파일 경로도 감지 (인라인 코드가 아닌 일반 텍스트용)
+// 절대경로, 상대경로(dir/file.ext) 매칭. 단독 파일명은 제외 (위치 불명확)
+const FILE_PATH_INLINE_RE = new RegExp(`((?:[A-Za-z]:)?(?:[\\\\/][^\\\\/:\\s]+)+\\.(?:${DOC_EXTS})|(?:[\\w.-]+[\\\\/])+[\\w.-]+\\.(?:${DOC_EXTS}))(?::(\\d+))?`, 'g');
+
+function linkifyFilePaths(children: ReactNode): ReactNode {
+  if (typeof children === 'string') {
+    const parts: ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    FILE_PATH_INLINE_RE.lastIndex = 0;
+    while ((match = FILE_PATH_INLINE_RE.exec(children)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(children.slice(lastIndex, match.index));
+      }
+      const filePath = match[1];
+      const full = match[0];
+      parts.push(
+        <span
+          key={match.index}
+          className="text-blue-300/80 hover:text-blue-300 cursor-pointer underline underline-offset-2 decoration-blue-400/30 transition-colors"
+          onClick={() => {
+            import('./FileViewer').then(m => m.useFileViewerStore.getState().openFile(filePath));
+          }}
+          title={`파일 열기: ${filePath}`}
+        >
+          {full}
+        </span>
+      );
+      lastIndex = match.index + full.length;
+    }
+    if (parts.length === 0) return children; // 매치 없음
+    if (lastIndex < children.length) parts.push(children.slice(lastIndex));
+    return <>{parts}</>;
+  }
+  if (Array.isArray(children)) {
+    return children.map((child, i) => <span key={i}>{linkifyFilePaths(child)}</span>);
+  }
+  return children;
+}
+
+// 테이블 셀: 파일 경로 자동 링크
+function LinkedTd({ children, node: _node, ...rest }: ComponentPropsWithoutRef<'td'> & { node?: unknown }) {
+  return <td {...rest}>{linkifyFilePaths(children)}</td>;
+}
+
 // ── 링크: 외부 링크 안전 처리 ────────────────────────────────────
+
+// ファイルパス判定用正規表現 (DOC_EXTSと同期)
+const FILE_HREF_RE = new RegExp(`\\.(?:${DOC_EXTS})(?::\\d+)?$`);
 
 function SafeLink({ href, children, node: _node, ...rest }: ComponentPropsWithoutRef<'a'> & { node?: unknown }) {
   const isExternal = href && (href.startsWith('http://') || href.startsWith('https://'));
+  // ローカルファイルパスのリンク → FileViewer で開く（WebView ナビゲーション防止）
+  const isFilePath = href && !isExternal && FILE_HREF_RE.test(href);
+
+  if (isFilePath) {
+    return (
+      <span
+        {...rest}
+        className="text-blue-300/80 hover:text-blue-300 cursor-pointer underline underline-offset-2 decoration-blue-400/30 transition-colors"
+        onClick={(e) => {
+          e.preventDefault();
+          import('./FileViewer').then(m => m.useFileViewerStore.getState().openFile(href));
+        }}
+        title={`파일 열기: ${href}`}
+      >
+        {children}
+      </span>
+    );
+  }
+
   return (
     <a
       {...rest}
@@ -166,6 +270,8 @@ function extractText(node: ReactNode): string {
 
 export const markdownComponents: Partial<Components> = {
   pre: CodeBlock as Components['pre'],
+  code: InlineCode as Components['code'],
   table: ScrollTable as Components['table'],
+  td: LinkedTd as Components['td'],
   a: SafeLink as Components['a'],
 };
