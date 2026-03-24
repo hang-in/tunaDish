@@ -149,11 +149,18 @@ export function ChatArea() {
   // 메시지 메타데이터 사전 계산 (O(n) 1회, O(n²) → O(n))
   const msgMeta = useMemo(() => computeMsgMeta(messages), [messages]);
 
+  // 사용자가 위로 스크롤했는지 추적 — 자동 스크롤 억제용
+  const isAtBottomRef = useRef(true);
+  const atBottomStateChange = useCallback((atBottom: boolean) => {
+    isAtBottomRef.current = atBottom;
+  }, []);
+
   // Virtuoso: 새 메시지/콘텐츠 추가 시 하단 자동 추적
-  // Virtuoso가 전달하는 실시간 isAtBottom을 사용 (React state보다 정확)
+  // 사용자가 위로 스크롤한 상태에서는 followOutput 비활성화
   const hasStreaming = messages.some(m => m.status === 'streaming');
   const followOutput = useCallback((isAtBottom: boolean) => {
-    // 스트리밍 중이면 무조건 따라가기, 아니면 하단에 있을 때만
+    // 사용자가 위로 스크롤한 상태면 자동 추적 안 함
+    if (!isAtBottom && !isAtBottomRef.current) return false;
     if (hasStreaming || isAtBottom) return 'smooth';
     return false;
   }, [hasStreaming]);
@@ -163,18 +170,19 @@ export function ChatArea() {
   useEffect(() => {
     if (activeConversationId !== prevConvRef.current) {
       prevConvRef.current = activeConversationId;
+      isAtBottomRef.current = true;
       setTimeout(() => {
         virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'auto' });
       }, 50);
     }
   }, [activeConversationId]);
 
-  // 새 메시지 추가 시 강제 스크롤 (followOutput 백업)
+  // 새 메시지 추가 시 하단에 있을 때만 자동 스크롤
   const prevMsgCountRef = useRef(messages.length);
   useEffect(() => {
     const prevCount = prevMsgCountRef.current;
     prevMsgCountRef.current = messages.length;
-    if (messages.length > prevCount) {
+    if (messages.length > prevCount && isAtBottomRef.current) {
       virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'smooth' });
     }
   }, [messages.length]);
@@ -207,6 +215,7 @@ export function ChatArea() {
             data={messages}
             itemContent={itemContent}
             followOutput={followOutput}
+            atBottomStateChange={atBottomStateChange}
             atBottomThreshold={150}
             initialTopMostItemIndex={messages.length - 1}
             overscan={600}
