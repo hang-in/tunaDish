@@ -256,9 +256,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const local = state.messages[convId] ?? [];
     // 로컬에서 삭제된 메시지는 서버 히스토리에서도 제외
     const filtered = serverMessages.filter(m => !deletedMessageIds.has(m.id));
-    // 서버 히스토리에 없는 로컬 메시지를 보존 (streaming/sending + 최근 done 메시지)
+    // 서버 히스토리에 없는 로컬 메시지 중, 로컬에서 생성된 것만 보존
+    // hist- 접두사 메시지는 이전 서버 히스토리이므로 새 히스토리로 대체 가능
     const serverIds = new Set(filtered.map(m => m.id));
-    const localOnly = local.filter(m => !serverIds.has(m.id) && !deletedMessageIds.has(m.id));
+    const localOnly = local.filter(m =>
+      !serverIds.has(m.id) && !deletedMessageIds.has(m.id) && !m.id.startsWith('hist-')
+    );
     return {
       messages: {
         ...state.messages,

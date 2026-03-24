@@ -12,7 +12,11 @@ import { useContextStore } from '@/store/contextStore';
  */
 export function useConvSettings(convId: string | null): ConvSettings & { availableEngines: Record<string, string[]> } {
   const conv = useChatStore(s => convId ? s.conversations[convId] : null);
-  const ctx = useContextStore(s => s.projectContext);
+  const projectKey = conv?.projectKey;
+  // 프로젝트별 캐시에서 읽기 — 세션 전환 시에도 안정적으로 값 유지
+  const ctx = useContextStore(s =>
+    projectKey ? (s.projectContextByKey[projectKey] ?? s.projectContext) : s.projectContext
+  );
   const globalEngineList = useContextStore(s => s.engineList);
 
   // availableEngines: project.context 응답 → engine.list 응답 순으로 폴백

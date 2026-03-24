@@ -376,22 +376,25 @@ describe('createConversation', () => {
 // ---------------------------------------------------------------------------
 
 describe('setHistory', () => {
-  it('replaces done messages and preserves in-flight messages', () => {
-    store.getState().pushMessage('conv-1', makeMsg({ id: 'old', status: 'done' }));
+  it('preserves local (non-hist) messages and in-flight messages', () => {
+    store.getState().pushMessage('conv-1', makeMsg({ id: 'local-done', status: 'done' }));
     store.getState().pushMessage('conv-1', makeMsg({ id: 'inflight', status: 'streaming' }));
     const newMsgs = [makeMsg({ id: 'new-1' }), makeMsg({ id: 'new-2' })];
     store.getState().setHistory('conv-1', newMsgs);
-    // 'old' (done) → 교체됨, 'inflight' (streaming) → 보존됨
-    expect(store.getState().messages['conv-1']).toHaveLength(3);
-    expect(store.getState().messages['conv-1'][0].id).toBe('new-1');
-    expect(store.getState().messages['conv-1'][1].id).toBe('new-2');
-    expect(store.getState().messages['conv-1'][2].id).toBe('inflight');
+    // 로컬 생성 메시지(non-hist)는 서버 히스토리에 없어도 보존됨
+    const result = store.getState().messages['conv-1'];
+    expect(result).toHaveLength(4);
+    expect(result[0].id).toBe('new-1');
+    expect(result[1].id).toBe('new-2');
+    expect(result.find(m => m.id === 'local-done')).toBeTruthy();
+    expect(result.find(m => m.id === 'inflight')).toBeTruthy();
   });
 
   it('replaces hist- prefixed messages on setHistory', () => {
     store.getState().pushMessage('conv-2', makeMsg({ id: 'hist-0' }));
     const newMsgs = [makeMsg({ id: 'hist-1' }), makeMsg({ id: 'hist-2' })];
     store.getState().setHistory('conv-2', newMsgs);
+    // hist- 접두사 메시지는 이전 서버 히스토리이므로 새 히스토리로 대체
     expect(store.getState().messages['conv-2']).toHaveLength(2);
     expect(store.getState().messages['conv-2'][0].id).toBe('hist-1');
   });

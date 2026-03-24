@@ -121,6 +121,8 @@ export type ContextTab = 'overview' | 'memory' | 'branches' | 'code';
 interface ContextState {
   activeTab: ContextTab;
   projectContext: ProjectContext | null;
+  /** 프로젝트별 projectContext 캐시 — 세션 전환 시 즉시 복원용 */
+  projectContextByKey: Record<string, ProjectContext>;
   memoryEntries: MemoryEntry[];
   gitBranches: GitBranch[];
   /** 프로젝트별 대화 브랜치 맵 (사이드바에서 항상 표시용) */
@@ -142,6 +144,8 @@ interface ContextState {
 
   setActiveTab: (tab: ContextTab) => void;
   setProjectContext: (ctx: ProjectContext) => void;
+  /** 세션 전환 시 캐시에서 즉시 projectContext 복원 (null이면 초기화) */
+  switchProjectContext: (projectKey: string | null) => void;
   setProjectConvBranches: (projectKey: string, branches: ConversationBranch[], fromDb?: boolean) => void;
   setMemoryEntries: (entries: MemoryEntry[]) => void;
   setBranches: (git: GitBranch[], conv: ConversationBranch[]) => void;
@@ -165,6 +169,7 @@ interface ContextState {
 export const useContextStore = create<ContextState>((set, get) => ({
   activeTab: 'overview',
   projectContext: null,
+  projectContextByKey: {},
   memoryEntries: [],
   gitBranches: [],
   convBranchesByProject: {},
@@ -200,12 +205,29 @@ export const useContextStore = create<ContextState>((set, get) => ({
     const mergedBranches = [...fromServer, ...localOnly];
     return {
       projectContext: ctx,
+      projectContextByKey: {
+        ...state.projectContextByKey,
+        [ctx.project]: ctx,
+      },
       memoryEntries: ctx.memoryEntries,
       gitBranches: ctx.activeBranches,
       convBranchesByProject: {
         ...state.convBranchesByProject,
         [ctx.project]: mergedBranches,
       },
+    };
+  }),
+
+  switchProjectContext: (projectKey) => set((state) => {
+    if (!projectKey) return { projectContext: null, progress: null };
+    const cached = state.projectContextByKey[projectKey];
+    return {
+      projectContext: cached ?? null,
+      memoryEntries: cached?.memoryEntries ?? [],
+      gitBranches: cached?.activeBranches ?? [],
+      progress: null,
+      codeSearchResults: null,
+      codeMap: null,
     };
   }),
 
@@ -282,10 +304,10 @@ export const useContextStore = create<ContextState>((set, get) => ({
   }),
 
   clear: () => set({
-    projectContext: null,
+    // projectContext, projectContextByKey는 clear하지 않음 — 세션 전환 시 즉시 복원용
+    // convBranchesByProject도 유지 — 다른 프로젝트 데이터 보존
     memoryEntries: [],
     gitBranches: [],
-    // convBranchesByProject는 clear하지 않음 — 다른 프로젝트 데이터 유지
     reviews: [],
     progress: null,
   }),

@@ -665,9 +665,9 @@ export function ContextPanel() {
   const activeConversationId = useChatStore(s => s.activeConversationId);
   const isConnected = useSystemStore(s => s.isConnected);
 
-  // 프로젝트/대화 변경 시 이전 데이터 초기화 후 재요청
+  // 프로젝트/대화 변경 시 캐시에서 즉시 복원 후 서버에 최신 데이터 재요청
   useEffect(() => {
-    useContextStore.getState().clear();
+    useContextStore.getState().switchProjectContext(activeProjectKey);
     if (!isConnected || !activeProjectKey) return;
     const params: Record<string, string> = { project: activeProjectKey };
     if (activeConversationId) params.conversation_id = activeConversationId;

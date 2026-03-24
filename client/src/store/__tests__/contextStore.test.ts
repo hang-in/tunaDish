@@ -388,10 +388,12 @@ describe('clear', () => {
     store.getState().clear();
 
     const s = store.getState();
-    expect(s.projectContext).toBeNull();
+    // clear()는 projectContext와 projectContextByKey를 보존 (세션 전환 시 즉시 복원용)
+    expect(s.projectContext).not.toBeNull();
+    expect(s.projectContextByKey).toHaveProperty('tunadish');
     expect(s.memoryEntries).toHaveLength(0);
     expect(s.gitBranches).toHaveLength(0);
-    expect(getConvBranches()).toHaveLength(0);
+    // convBranchesByProject도 clear에서 유지
     expect(s.reviews).toHaveLength(0);
     expect(s.progress).toBeNull();
   });

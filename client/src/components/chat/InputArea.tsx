@@ -288,7 +288,11 @@ export function InputArea({ overrideConversationId, compact }: { overrideConvers
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const storeConversationId = useChatStore(s => s.activeConversationId);
   const activeConversationId = overrideConversationId ?? storeConversationId;
-  const gitBranch = useContextStore(s => s.projectContext?.gitCurrentBranch);
+  const activeProjectKey = useChatStore(s => s.activeProjectKey);
+  const gitBranch = useContextStore(s => {
+    const ctx = activeProjectKey ? (s.projectContextByKey[activeProjectKey] ?? s.projectContext) : s.projectContext;
+    return ctx?.gitCurrentBranch;
+  });
   const isMockMode = useChatStore(s => s.isMockMode);
   const pushMessage = useChatStore(s => s.pushMessage);
   const replyTo = useChatStore(s => s.replyTo);

@@ -148,7 +148,10 @@ export const MessageView = memo(function MessageView({ msg, isGrouped, isRoleSwi
   const activeConvId = useChatStore(s => s.activeConversationId);
   const resolvedConvId = conversationId ?? activeConvId;
   const conv = useChatStore(s => resolvedConvId ? s.conversations[resolvedConvId] : null);
-  const ctx = useContextStore(s => s.projectContext);
+  const projectKey = conv?.projectKey;
+  const ctx = useContextStore(s =>
+    projectKey ? (s.projectContextByKey[projectKey] ?? s.projectContext) : s.projectContext
+  );
 
   // 메시지에 기록된 engine/model 우선, 없으면 conversation → projectContext 폴백
   const rawEngine = msg.engine || conv?.engine || ctx?.engine || 'claude';
